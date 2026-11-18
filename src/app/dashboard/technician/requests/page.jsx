@@ -102,8 +102,21 @@ export default function RepairRequestsPage() {
     fetchRequests();
   }, [fetchRequests]);
 
+  // Update booking status
   const handleStatusUpdate = async (bookingId, status) => {
-    const action = status === "accepted" ? "accept" : "reject";
+    const actionMessages = {
+      accepted: "accept this request",
+      rejected: "reject this request",
+      "in-progress": "start this repair",
+      completed: "complete this repair",
+    };
+
+    const successMessages = {
+      accepted: "Repair request accepted successfully.",
+      rejected: "Repair request rejected successfully.",
+      "in-progress": "Repair work started successfully.",
+      completed: "Repair marked as completed successfully.",
+    };
 
     try {
       setUpdatingId(bookingId);
@@ -125,19 +138,29 @@ export default function RepairRequestsPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.message || `Failed to ${action} this request.`);
+        throw new Error(
+          data.message ||
+            `Failed to ${actionMessages[status] || "update this request"}.`
+        );
       }
 
+      // Update the booking immediately in the frontend
       setBookings((previousBookings) =>
         previousBookings.map((booking) =>
           booking._id === bookingId
-            ? { ...booking, status }
+            ? {
+                ...booking,
+                status,
+                ...(status === "completed" && data.completedAt
+                  ? { completedAt: data.completedAt }
+                  : {}),
+              }
             : booking
         )
       );
 
       setSuccessMessage(
-        data.message || `Repair request ${action}ed successfully.`
+        data.message || successMessages[status]
       );
     } catch (err) {
       setError(err.message || "Could not update the repair request.");
@@ -173,7 +196,7 @@ export default function RepairRequestsPage() {
           <button
             type="button"
             onClick={fetchRequests}
-            disabled={loading}
+            disabled={loading || updatingId !== null}
             className="inline-flex items-center justify-center gap-2 self-start rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60 sm:self-auto"
           >
             <RefreshCw
@@ -266,6 +289,11 @@ export default function RepairRequestsPage() {
             {bookings.map((booking) => {
               const isUpdating = updatingId === booking._id;
               const isPending = booking.status === "requested";
+              const isAccepted = booking.status === "accepted";
+              const isInProgress = booking.status === "in-progress";
+              const isCompleted = booking.status === "completed";
+              const isRejected = booking.status === "rejected";
+              const isCancelled = booking.status === "cancelled";
 
               return (
                 <article
@@ -393,7 +421,7 @@ export default function RepairRequestsPage() {
                       )}
 
                       {/* Action Buttons */}
-                      {isPending ? (
+                      {isPending && (
                         <div className="mt-5 flex flex-col gap-3 sm:flex-row">
                           <button
                             type="button"
@@ -427,10 +455,81 @@ export default function RepairRequestsPage() {
                             Reject Request
                           </button>
                         </div>
-                      ) : (
-                        <p className="mt-5 text-sm font-medium text-slate-500">
-                          This request has already been processed.
-                        </p>
+                      )}
+
+                      {/* Accepted: Start Repair */}
+                      {isAccepted && (
+                        <div className="mt-5">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleStatusUpdate(booking._id, "in-progress")
+                            }
+                            disabled={isUpdating}
+                            className="inline-flex items-center justify-center gap-2 rounded-xl bg-purple-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {isUpdating ? (
+                              <Loader2 size={17} className="animate-spin" />
+                            ) : (
+                              <Wrench size={17} />
+                            )}
+                            Start Repair
+                          </button>
+
+                          <p className="mt-2 text-xs text-blue-600">
+                            This request has been accepted. Start the repair
+                            when you are ready.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* In Progress: Complete Repair */}
+                      {isInProgress && (
+                        <div className="mt-5">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleStatusUpdate(booking._id, "completed")
+                            }
+                            disabled={isUpdating}
+                            className="inline-flex items-center justify-center gap-2 rounded-xl bg-green-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {isUpdating ? (
+                              <Loader2 size={17} className="animate-spin" />
+                            ) : (
+                              <CheckCircle2 size={17} />
+                            )}
+                            Mark as Completed
+                          </button>
+
+                          <p className="mt-2 text-xs text-purple-600">
+                            Repair is in progress. Mark it completed after
+                            finishing the work.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Completed */}
+                      {isCompleted && (
+                        <div className="mt-5 flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 p-4 text-sm font-semibold text-green-700">
+                          <CheckCircle2 size={19} />
+                          This repair has been completed successfully.
+                        </div>
+                      )}
+
+                      {/* Rejected */}
+                      {isRejected && (
+                        <div className="mt-5 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">
+                          <XCircle size={19} />
+                          You rejected this repair request.
+                        </div>
+                      )}
+
+                      {/* Cancelled */}
+                      {isCancelled && (
+                        <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm font-medium text-slate-600">
+                          This booking has been cancelled.
+                        </div>
                       )}
                     </div>
                   </div>
@@ -440,6 +539,6 @@ export default function RepairRequestsPage() {
           </div>
         )}
       </div>
-       </main>
-    );
+    </main>
+  );
 }

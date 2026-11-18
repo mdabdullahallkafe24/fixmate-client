@@ -2,7 +2,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -17,8 +17,9 @@ import {
   XCircle,
 } from "lucide-react";
 
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+const API_URL = (
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"
+).replace(/\/$/, "");
 
 const statusStyles = {
   requested: "bg-amber-50 text-amber-700 border-amber-200",
@@ -27,6 +28,39 @@ const statusStyles = {
   "in-progress": "bg-purple-50 text-purple-700 border-purple-200",
   completed: "bg-emerald-50 text-emerald-700 border-emerald-200",
   cancelled: "bg-slate-100 text-slate-600 border-slate-200",
+};
+
+const statusMessages = {
+  requested: {
+    title: "Your repair request has been submitted.",
+    description:
+      "Please wait while a technician reviews and responds to your request.",
+  },
+  accepted: {
+    title: "Your repair request has been accepted!",
+    description:
+      "The technician has accepted your request. Your repair will be started soon.",
+  },
+  "in-progress": {
+    title: "Your device is being repaired!",
+    description:
+      "The technician is currently working on your repair. Please wait for the completion update.",
+  },
+  completed: {
+    title: "Your repair has been completed successfully!",
+    description:
+      "Great news! The technician has marked your repair as completed. Your device repair is done.",
+  },
+  rejected: {
+    title: "Your repair request was rejected.",
+    description:
+      "Unfortunately, the technician could not accept this request. You can explore other available services.",
+  },
+  cancelled: {
+    title: "This booking has been cancelled.",
+    description:
+      "This repair booking is no longer active.",
+  },
 };
 
 function formatDate(date) {
@@ -40,6 +74,22 @@ function formatDate(date) {
     day: "numeric",
     month: "long",
     year: "numeric",
+  });
+}
+
+function formatDateTime(date) {
+  if (!date) return null;
+
+  const parsedDate = new Date(date);
+
+  if (Number.isNaN(parsedDate.getTime())) return null;
+
+  return parsedDate.toLocaleString("en-BD", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
   });
 }
 
@@ -57,44 +107,53 @@ export default function MyBookingsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    async function fetchBookings() {
-      try {
-        setLoading(true);
-        setError("");
+  const fetchBookings = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError("");
 
-        const response = await fetch(
-          `${API_URL}/api/bookings/my-bookings`,
-          {
-            method: "GET",
-            credentials: "include",
-            cache: "no-store",
-          }
-        );
-
-        const data = await response.json();
-
-        if (response.status === 401) {
-          setError("Please sign in to view your bookings.");
-          return;
+      const response = await fetch(
+        `${API_URL}/api/bookings/my-bookings`,
+        {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store",
         }
+      );
 
-        if (!response.ok || !data.success) {
-          throw new Error(
-            data.message || "Failed to load your bookings."
-          );
-        }
+      const data = await response.json();
 
-        setBookings(data.bookings || []);
-      } catch (err) {
-        setError(err.message || "Something went wrong.");
-      } finally {
-        setLoading(false);
+      if (response.status === 401) {
+        setError("Please sign in to view your bookings.");
+        return;
       }
-    }
 
-    fetchBookings();
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || "Failed to load your bookings.");
+      }
+
+      setBookings(Array.isArray(data.bookings) ? data.bookings : []);
+    } catch (err) {
+      setError(err.message || "Something went wrong.");
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    fetchBookings();
+
+    // Refresh booking status when the customer returns to this tab.
+    const handleFocus = () => {
+      fetchBookings();
+    };
+
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, [fetchBookings]);
 
   const totalBookings = bookings.length;
 
@@ -186,7 +245,7 @@ export default function MyBookingsPage() {
                 </div>
 
                 <h2 className="mt-4 text-3xl font-extrabold text-slate-900">
-                  {loading ? "—" : item.value}
+                  {loading ? "—" : error ? "—" : item.value}
                 </h2>
               </div>
             );
@@ -223,7 +282,7 @@ export default function MyBookingsPage() {
             </p>
 
             <button
-              onClick={() => window.location.reload()}
+              onClick={fetchBookings}
               className="mt-6 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
             >
               Try Again
@@ -272,156 +331,218 @@ export default function MyBookingsPage() {
             </div>
 
             <div className="space-y-5">
-              {bookings.map((booking) => (
-                <article
-                  key={booking._id}
-                  className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:shadow-md"
-                >
-                  <div className="grid md:grid-cols-[220px_1fr]">
-                    {/* Service Image */}
-                    <div className="h-52 bg-slate-100 md:h-full">
-                      {booking.serviceImage ? (
-                        <img
-                          src={booking.serviceImage}
-                          alt={booking.serviceTitle || "Repair service"}
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <div className="flex h-full min-h-48 items-center justify-center text-slate-400">
-                          <Wrench size={45} />
-                        </div>
-                      )}
-                    </div>
+              {bookings.map((booking) => {
+                const currentStatus = booking.status || "requested";
+                const statusMessage =
+                  statusMessages[currentStatus] || statusMessages.requested;
 
-                    {/* Booking Information */}
-                    <div className="p-6 sm:p-7">
-                      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
-                        <div>
-                          <span className="inline-flex rounded-full bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">
-                            {booking.category || "Repair Service"}
-                          </span>
+                const completedAt = formatDateTime(booking.completedAt);
 
-                          <h3 className="mt-3 text-xl font-bold text-slate-900">
-                            {booking.serviceTitle}
-                          </h3>
+                return (
+                  <article
+                    key={booking._id}
+                    className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:shadow-md"
+                  >
+                    <div className="grid md:grid-cols-[220px_1fr]">
+                      {/* Service Image */}
+                      <div className="h-52 bg-slate-100 md:h-full">
+                        {booking.serviceImage ? (
+                          <img
+                            src={booking.serviceImage}
+                            alt={booking.serviceTitle || "Repair service"}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-full min-h-48 items-center justify-center text-slate-400">
+                            <Wrench size={45} />
+                          </div>
+                        )}
+                      </div>
 
-                          <p className="mt-2 text-sm text-slate-500">
-                            Booking ID:{" "}
-                            <span className="break-all font-medium text-slate-700">
-                              {booking._id}
+                      {/* Booking Information */}
+                      <div className="p-6 sm:p-7">
+                        <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+                          <div>
+                            <span className="inline-flex rounded-full bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">
+                              {booking.category || "Repair Service"}
                             </span>
-                          </p>
+
+                            <h3 className="mt-3 text-xl font-bold text-slate-900">
+                              {booking.serviceTitle}
+                            </h3>
+
+                            <p className="mt-2 text-sm text-slate-500">
+                              Booking ID:{" "}
+                              <span className="break-all font-medium text-slate-700">
+                                {booking._id}
+                              </span>
+                            </p>
+                          </div>
+
+                          <span
+                            className={`inline-flex w-fit items-center rounded-full border px-3 py-1.5 text-xs font-semibold ${
+                              statusStyles[currentStatus] ||
+                              statusStyles.requested
+                            }`}
+                          >
+                            {formatStatus(currentStatus)}
+                          </span>
                         </div>
 
-                        <span
-                          className={`inline-flex w-fit items-center rounded-full border px-3 py-1.5 text-xs font-semibold ${
-                            statusStyles[booking.status] ||
-                            statusStyles.requested
+                        {/* Booking Status Message */}
+                        <div
+                          className={`mt-5 rounded-xl border p-4 ${
+                            currentStatus === "completed"
+                              ? "border-emerald-200 bg-emerald-50"
+                              : currentStatus === "rejected"
+                                ? "border-red-200 bg-red-50"
+                                : currentStatus === "in-progress"
+                                  ? "border-purple-200 bg-purple-50"
+                                  : currentStatus === "accepted"
+                                    ? "border-blue-200 bg-blue-50"
+                                    : "border-amber-200 bg-amber-50"
                           }`}
                         >
-                          {formatStatus(booking.status)}
-                        </span>
-                      </div>
+                          <div className="flex items-start gap-3">
+                            {currentStatus === "completed" ? (
+                              <CheckCircle2
+                                size={21}
+                                className="mt-0.5 shrink-0 text-emerald-600"
+                              />
+                            ) : currentStatus === "rejected" ? (
+                              <XCircle
+                                size={21}
+                                className="mt-0.5 shrink-0 text-red-600"
+                              />
+                            ) : currentStatus === "in-progress" ? (
+                              <Wrench
+                                size={21}
+                                className="mt-0.5 shrink-0 text-purple-600"
+                              />
+                            ) : (
+                              <Clock3
+                                size={21}
+                                className="mt-0.5 shrink-0 text-blue-600"
+                              />
+                            )}
 
-                      <div className="my-5 border-t border-slate-100" />
+                            <div>
+                              <p className="text-sm font-bold text-slate-800">
+                                {statusMessage.title}
+                              </p>
 
-                      <div className="grid gap-4 sm:grid-cols-2">
-                        <div className="flex items-start gap-3">
-                          <CalendarDays
-                            size={19}
-                            className="mt-0.5 shrink-0 text-blue-600"
-                          />
+                              <p className="mt-1 text-sm leading-6 text-slate-600">
+                                {statusMessage.description}
+                              </p>
 
-                          <div>
-                            <p className="text-xs text-slate-500">
-                              Preferred Date
-                            </p>
-
-                            <p className="mt-1 text-sm font-semibold text-slate-800">
-                              {formatDate(booking.preferredDate)}
-                            </p>
+                              {currentStatus === "completed" && completedAt && (
+                                <p className="mt-2 text-xs font-semibold text-emerald-700">
+                                  Completed on: {completedAt}
+                                </p>
+                              )}
+                            </div>
                           </div>
                         </div>
 
-                        <div className="flex items-start gap-3">
-                          <Wrench
-                            size={19}
-                            className="mt-0.5 shrink-0 text-blue-600"
-                          />
+                        <div className="my-5 border-t border-slate-100" />
 
-                          <div>
-                            <p className="text-xs text-slate-500">
-                              Technician
-                            </p>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <div className="flex items-start gap-3">
+                            <CalendarDays
+                              size={19}
+                              className="mt-0.5 shrink-0 text-blue-600"
+                            />
 
-                            <p className="mt-1 text-sm font-semibold text-slate-800">
-                              {booking.technicianName ||
-                                "Not assigned"}
-                            </p>
+                            <div>
+                              <p className="text-xs text-slate-500">
+                                Preferred Date
+                              </p>
+
+                              <p className="mt-1 text-sm font-semibold text-slate-800">
+                                {formatDate(booking.preferredDate)}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-start gap-3">
+                            <Wrench
+                              size={19}
+                              className="mt-0.5 shrink-0 text-blue-600"
+                            />
+
+                            <div>
+                              <p className="text-xs text-slate-500">
+                                Technician
+                              </p>
+
+                              <p className="mt-1 text-sm font-semibold text-slate-800">
+                                {booking.technicianName || "Not assigned"}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-start gap-3">
+                            <MapPin
+                              size={19}
+                              className="mt-0.5 shrink-0 text-blue-600"
+                            />
+
+                            <div>
+                              <p className="text-xs text-slate-500">
+                                Service Address
+                              </p>
+
+                              <p className="mt-1 break-words text-sm font-semibold text-slate-800">
+                                {booking.address}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-start gap-3">
+                            <ClipboardList
+                              size={19}
+                              className="mt-0.5 shrink-0 text-blue-600"
+                            />
+
+                            <div>
+                              <p className="text-xs text-slate-500">
+                                Payment Status
+                              </p>
+
+                              <p className="mt-1 text-sm font-semibold capitalize text-slate-800">
+                                {booking.paymentStatus || "Unpaid"}
+                              </p>
+                            </div>
                           </div>
                         </div>
 
-                        <div className="flex items-start gap-3">
-                          <MapPin
-                            size={19}
-                            className="mt-0.5 shrink-0 text-blue-600"
-                          />
-
+                        <div className="mt-6 flex flex-col justify-between gap-4 border-t border-slate-100 pt-5 sm:flex-row sm:items-center">
                           <div>
                             <p className="text-xs text-slate-500">
-                              Service Address
+                              Starting Price
                             </p>
 
-                            <p className="mt-1 break-words text-sm font-semibold text-slate-800">
-                              {booking.address}
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="flex items-start gap-3">
-                          <ClipboardList
-                            size={19}
-                            className="mt-0.5 shrink-0 text-blue-600"
-                          />
-
-                          <div>
-                            <p className="text-xs text-slate-500">
-                              Payment Status
-                            </p>
-
-                            <p className="mt-1 text-sm font-semibold capitalize text-slate-800">
-                              {booking.paymentStatus || "Unpaid"}
+                            <p className="mt-1 text-xl font-extrabold text-slate-900">
+                              ৳
+                              {Number(
+                                booking.basePrice || 0
+                              ).toLocaleString("en-BD")}
                             </p>
                           </div>
+
+                          <Link
+                            href={`/services/${booking.serviceId}`}
+                            className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
+                          >
+                            View Service
+                            <ArrowRight size={17} />
+                          </Link>
                         </div>
-                      </div>
-
-                      <div className="mt-6 flex flex-col justify-between gap-4 border-t border-slate-100 pt-5 sm:flex-row sm:items-center">
-                        <div>
-                          <p className="text-xs text-slate-500">
-                            Starting Price
-                          </p>
-
-                          <p className="mt-1 text-xl font-extrabold text-slate-900">
-                            ৳
-                            {Number(
-                              booking.basePrice || 0
-                            ).toLocaleString("en-BD")}
-                          </p>
-                        </div>
-
-                        <Link
-                          href={`/services/${booking.serviceId}`}
-                          className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
-                        >
-                          View Service
-                          <ArrowRight size={17} />
-                        </Link>
                       </div>
                     </div>
-                  </div>
-                </article>
-              ))}
+                  </article>
+                );
+              })}
             </div>
           </section>
         )}
@@ -440,3 +561,4 @@ export default function MyBookingsPage() {
     </main>
   );
 }
+
