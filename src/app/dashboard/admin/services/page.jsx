@@ -17,8 +17,9 @@ import {
   ArrowLeft,
 } from "lucide-react";
 
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+const API_URL = (
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"
+).replace(/\/$/, "");
 
 export default function AdminServicesPage() {
   const { data: session, isPending: sessionLoading } =
@@ -29,12 +30,11 @@ export default function AdminServicesPage() {
   const [actionId, setActionId] = useState(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [activeFilter, setActiveFilter] = useState("all");
+  const [activeFilter, setActiveFilter] = useState("pending");
   const [searchTerm, setSearchTerm] = useState("");
 
   const user = session?.user;
 
-  // Fetch all services for admin
   const fetchServices = async () => {
     try {
       setLoading(true);
@@ -68,7 +68,6 @@ export default function AdminServicesPage() {
     }
   }, [sessionLoading, user?.role]);
 
-  // Approve or reject a service
   const handleApproval = async (serviceId, approvalStatus) => {
     const action = approvalStatus === "approved" ? "approve" : "reject";
 
@@ -109,7 +108,11 @@ export default function AdminServicesPage() {
         )
       );
 
-      setSuccess(`Service ${action}d successfully!`);
+      setSuccess(
+        `Service ${
+          approvalStatus === "approved" ? "approved" : "rejected"
+        } successfully!`
+      );
     } catch (err) {
       setError(err.message || "Something went wrong.");
     } finally {
@@ -117,7 +120,6 @@ export default function AdminServicesPage() {
     }
   };
 
-  // Filter and search services
   const filteredServices = useMemo(() => {
     return services.filter((service) => {
       const matchesFilter =
@@ -162,7 +164,6 @@ export default function AdminServicesPage() {
     rejected: "bg-red-100 text-red-700",
   };
 
-  // Session loading
   if (sessionLoading) {
     return (
       <div className="flex min-h-[70vh] items-center justify-center">
@@ -171,7 +172,6 @@ export default function AdminServicesPage() {
     );
   }
 
-  // Admin role protection
   if (!user || user.role !== "admin") {
     return (
       <div className="flex min-h-[70vh] items-center justify-center px-4">
@@ -197,7 +197,6 @@ export default function AdminServicesPage() {
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-8 md:px-8">
       <div className="mx-auto max-w-7xl">
-        {/* Header */}
         <div className="mb-8 flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
           <div>
             <Link
@@ -230,35 +229,13 @@ export default function AdminServicesPage() {
           </button>
         </div>
 
-        {/* Statistics */}
         <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard
-            title="Total Services"
-            value={counts.all}
-            icon={<Package size={22} />}
-            color="blue"
-          />
-          <StatCard
-            title="Pending Approval"
-            value={counts.pending}
-            icon={<Clock size={22} />}
-            color="amber"
-          />
-          <StatCard
-            title="Approved Services"
-            value={counts.approved}
-            icon={<CheckCircle size={22} />}
-            color="green"
-          />
-          <StatCard
-            title="Rejected Services"
-            value={counts.rejected}
-            icon={<XCircle size={22} />}
-            color="red"
-          />
+          <StatCard title="Total Services" value={counts.all} icon={<Package size={22} />} color="blue" />
+          <StatCard title="Pending Approval" value={counts.pending} icon={<Clock size={22} />} color="amber" />
+          <StatCard title="Approved Services" value={counts.approved} icon={<CheckCircle size={22} />} color="green" />
+          <StatCard title="Rejected Services" value={counts.rejected} icon={<XCircle size={22} />} color="red" />
         </div>
 
-        {/* Alerts */}
         {error && (
           <div className="mb-6 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-red-700">
             <AlertCircle className="mt-0.5 shrink-0" size={20} />
@@ -273,7 +250,6 @@ export default function AdminServicesPage() {
           </div>
         )}
 
-        {/* Filters and Search */}
         <div className="mb-6 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex flex-wrap gap-2">
@@ -308,7 +284,6 @@ export default function AdminServicesPage() {
           </div>
         </div>
 
-        {/* Services */}
         {loading ? (
           <div className="flex min-h-60 items-center justify-center rounded-2xl bg-white">
             <Loader2 className="h-9 w-9 animate-spin text-blue-600" />
@@ -330,7 +305,6 @@ export default function AdminServicesPage() {
                 key={service._id}
                 className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm transition hover:shadow-md"
               >
-                {/* Service Image */}
                 <div className="h-52 bg-gray-100">
                   {service.image ? (
                     <img
@@ -347,7 +321,6 @@ export default function AdminServicesPage() {
                 </div>
 
                 <div className="p-5">
-                  {/* Title and Status */}
                   <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <p className="text-xs font-semibold uppercase tracking-wider text-blue-600">
@@ -372,7 +345,6 @@ export default function AdminServicesPage() {
                     {service.description}
                   </p>
 
-                  {/* Service Details */}
                   <div className="grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-4 text-sm">
                     <div>
                       <p className="text-xs text-gray-400">Base Price</p>
@@ -403,7 +375,6 @@ export default function AdminServicesPage() {
                     </div>
                   </div>
 
-                  {/* Technician Information */}
                   <div className="mt-4 rounded-xl border border-gray-100 p-4">
                     <p className="mb-2 text-xs font-bold uppercase tracking-wider text-gray-400">
                       Submitted By
@@ -416,50 +387,43 @@ export default function AdminServicesPage() {
                     </p>
                   </div>
 
-                  {/* Approval Actions */}
-                  {service.approvalStatus === "pending" && (
-                    <div className="mt-5 flex flex-col gap-3 sm:flex-row">
-                      <button
-                        onClick={() =>
-                          handleApproval(service._id, "approved")
-                        }
-                        disabled={actionId === service._id}
-                        className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-green-600 px-4 py-3 font-semibold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {actionId === service._id ? (
-                          <Loader2 size={18} className="animate-spin" />
-                        ) : (
-                          <CheckCircle size={18} />
-                        )}
-                        Approve Service
-                      </button>
+                  <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+                    <button
+                      onClick={() => handleApproval(service._id, "approved")}
+                      disabled={
+                        actionId === service._id ||
+                        service.approvalStatus === "approved"
+                      }
+                      className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-green-600 px-4 py-3 font-semibold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {actionId === service._id ? (
+                        <Loader2 size={18} className="animate-spin" />
+                      ) : (
+                        <CheckCircle size={18} />
+                      )}
+                      {service.approvalStatus === "approved"
+                        ? "Already Approved"
+                        : "Approve Service"}
+                    </button>
 
-                      <button
-                        onClick={() =>
-                          handleApproval(service._id, "rejected")
-                        }
-                        disabled={actionId === service._id}
-                        className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 font-semibold text-red-600 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
+                    <button
+                      onClick={() => handleApproval(service._id, "rejected")}
+                      disabled={
+                        actionId === service._id ||
+                        service.approvalStatus === "rejected"
+                      }
+                      className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 font-semibold text-red-600 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {actionId === service._id ? (
+                        <Loader2 size={18} className="animate-spin" />
+                      ) : (
                         <XCircle size={18} />
-                        Reject Service
-                      </button>
-                    </div>
-                  )}
-
-                  {service.approvalStatus === "approved" && (
-                    <div className="mt-5 flex items-center gap-2 rounded-lg bg-green-50 p-3 text-sm font-semibold text-green-700">
-                      <CheckCircle size={18} />
-                      This service is approved.
-                    </div>
-                  )}
-
-                  {service.approvalStatus === "rejected" && (
-                    <div className="mt-5 flex items-center gap-2 rounded-lg bg-red-50 p-3 text-sm font-semibold text-red-700">
-                      <XCircle size={18} />
-                      This service has been rejected.
-                    </div>
-                  )}
+                      )}
+                      {service.approvalStatus === "rejected"
+                        ? "Already Rejected"
+                        : "Reject Service"}
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
@@ -470,7 +434,6 @@ export default function AdminServicesPage() {
   );
 }
 
-// Statistics Card
 function StatCard({ title, value, icon, color }) {
   const colors = {
     blue: "bg-blue-50 text-blue-600",
@@ -486,9 +449,7 @@ function StatCard({ title, value, icon, color }) {
           <p className="text-sm font-medium text-gray-500">{title}</p>
           <p className="mt-2 text-3xl font-bold text-gray-900">{value}</p>
         </div>
-        <div className={`rounded-xl p-3 ${colors[color]}`}>
-          {icon}
-        </div>
+        <div className={`rounded-xl p-3 ${colors[color]}`}>{icon}</div>
       </div>
     </div>
   );
