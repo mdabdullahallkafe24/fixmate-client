@@ -1,4 +1,5 @@
 
+import { connection } from "next/server";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
@@ -42,6 +43,9 @@ async function getService(id) {
 }
 
 export default async function ServiceDetailsPage({ params }) {
+  // Wait for the incoming request before fetching uncached data.
+  await connection();
+
   const { id } = await params;
 
   let service;
@@ -255,13 +259,13 @@ export default async function ServiceDetailsPage({ params }) {
               repair needs with the technician.
             </p>
 
-           <Link
+            <Link
               href={`/booking/${service._id}`}
-                  className="mt-7 flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3.5 font-semibold text-white transition hover:bg-blue-700"
-                          >
-                        Book This Service
-                      <ArrowRight size={18} />
-                        </Link>
+              className="mt-7 flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3.5 font-semibold text-white transition hover:bg-blue-700"
+            >
+              Book This Service
+              <ArrowRight size={18} />
+            </Link>
 
             <p className="mt-4 text-center text-xs leading-5 text-slate-500">
               Sign in to request a repair service.
