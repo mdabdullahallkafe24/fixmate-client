@@ -1,5 +1,4 @@
 
-import { connection } from "next/server";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
@@ -13,8 +12,9 @@ import {
   Wrench,
 } from "lucide-react";
 
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+const API_URL = (
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"
+).replace(/\/$/, "");
 
 async function getService(id) {
   try {
@@ -43,9 +43,6 @@ async function getService(id) {
 }
 
 export default async function ServiceDetailsPage({ params }) {
-  // Wait for the incoming request before fetching uncached data.
-  await connection();
-
   const { id } = await params;
 
   let service;
