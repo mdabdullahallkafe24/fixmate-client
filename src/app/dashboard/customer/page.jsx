@@ -1,6 +1,7 @@
 
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   CalendarDays,
@@ -15,32 +16,9 @@ import {
   Headphones,
 } from "lucide-react";
 
-const stats = [
-  {
-    label: "Total Bookings",
-    value: "0",
-    icon: CalendarDays,
-    color: "bg-blue-50 text-blue-600",
-  },
-  {
-    label: "Pending Requests",
-    value: "0",
-    icon: Clock3,
-    color: "bg-amber-50 text-amber-600",
-  },
-  {
-    label: "Completed Repairs",
-    value: "0",
-    icon: CheckCircle2,
-    color: "bg-emerald-50 text-emerald-600",
-  },
-  {
-    label: "Total Payments",
-    value: "৳0",
-    icon: CreditCard,
-    color: "bg-purple-50 text-purple-600",
-  },
-];
+const API_URL = (
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"
+).replace(/\/$/, "");
 
 const quickActions = [
   {
@@ -67,6 +45,96 @@ const quickActions = [
 ];
 
 export default function CustomerDashboard() {
+  const [bookings, setBookings] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchDashboardData = async () => {
+      try {
+        setLoading(true);
+        setError("");
+
+        const response = await fetch(
+          `${API_URL}/api/bookings/my-bookings`,
+          {
+            method: "GET",
+            credentials: "include",
+            cache: "no-store",
+          }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.message || "Failed to load your bookings.");
+        }
+
+        if (!isMounted) return;
+
+        setBookings(Array.isArray(data.bookings) ? data.bookings : []);
+      } catch (err) {
+        if (isMounted) {
+          setError(err.message || "Something went wrong. Please try again.");
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    fetchDashboardData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const pendingBookings = bookings.filter(
+    (booking) => booking.status === "requested"
+  ).length;
+
+  const completedBookings = bookings.filter(
+    (booking) => booking.status === "completed"
+  ).length;
+
+  const totalPayments = bookings
+    .filter((booking) => booking.paymentStatus === "paid")
+    .reduce((total, booking) => {
+      const amount = Number(booking.finalAmount);
+      return total + (Number.isFinite(amount) ? amount : 0);
+    }, 0);
+
+  const stats = [
+    {
+      label: "Total Bookings",
+      value: bookings.length.toString(),
+      icon: CalendarDays,
+      color: "bg-blue-50 text-blue-600",
+    },
+    {
+      label: "Pending Requests",
+      value: pendingBookings.toString(),
+      icon: Clock3,
+      color: "bg-amber-50 text-amber-600",
+    },
+    {
+      label: "Completed Repairs",
+      value: completedBookings.toString(),
+      icon: CheckCircle2,
+      color: "bg-emerald-50 text-emerald-600",
+    },
+    {
+      label: "Total Payments",
+      value: `৳${totalPayments.toLocaleString("en-BD")}`,
+      icon: CreditCard,
+      color: "bg-purple-50 text-purple-600",
+    },
+  ];
+
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-10 sm:px-6 lg:px-10">
       <div className="mx-auto max-w-7xl">
@@ -145,6 +213,12 @@ export default function CustomerDashboard() {
             </p>
           </div>
 
+          {error && (
+            <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+              {error}
+            </div>
+          )}
+
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             {stats.map((item) => {
               const Icon = item.icon;
@@ -167,7 +241,7 @@ export default function CustomerDashboard() {
                   </div>
 
                   <h3 className="mt-4 text-3xl font-extrabold text-slate-900">
-                    {item.value}
+                    {loading ? "..." : error ? "—" : item.value}
                   </h3>
                 </div>
               );
@@ -223,28 +297,56 @@ export default function CustomerDashboard() {
         </section>
 
         {/* Empty Bookings */}
-        <section className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm sm:p-12">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
-            <CalendarDays size={30} />
-          </div>
+        {!loading && !error && bookings.length === 0 && (
+          <section className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm sm:p-12">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+              <CalendarDays size={30} />
+            </div>
 
-          <h2 className="mt-5 text-xl font-bold text-slate-900">
-            No Bookings Yet
-          </h2>
+            <h2 className="mt-5 text-xl font-bold text-slate-900">
+              No Bookings Yet
+            </h2>
 
-          <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
-            You haven't booked any repair services yet. Explore our available
-            services and find the right technician for your needs.
-          </p>
+            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
+              You haven't booked any repair services yet. Explore our available
+              services and find the right technician for your needs.
+            </p>
 
-          <Link
-            href="/services"
-            className="mt-6 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
-          >
-            Browse Services
-            <ArrowRight size={17} />
-          </Link>
-        </section>
+            <Link
+              href="/services"
+              className="mt-6 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
+            >
+              Browse Services
+              <ArrowRight size={17} />
+            </Link>
+          </section>
+        )}
+
+        {!loading && !error && bookings.length > 0 && (
+          <section className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm sm:p-12">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+              <CalendarDays size={30} />
+            </div>
+
+            <h2 className="mt-5 text-xl font-bold text-slate-900">
+              Your Repair Bookings
+            </h2>
+
+            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
+              You have {bookings.length} repair booking
+              {bookings.length !== 1 ? "s" : ""}. Track your requests and check
+              their latest status.
+            </p>
+
+            <Link
+              href="/dashboard/customer/bookings"
+              className="mt-6 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
+            >
+              View My Bookings
+              <ArrowRight size={17} />
+            </Link>
+          </section>
+        )}
 
         {/* Support */}
         <div className="mt-7 flex flex-col items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-5 sm:flex-row">
