@@ -255,13 +255,13 @@ export default async function ServiceDetailsPage({ params }) {
               repair needs with the technician.
             </p>
 
-            <Link
-              href="/sign-in"
-              className="mt-7 flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3.5 font-semibold text-white transition hover:bg-blue-700"
-            >
-              Book This Service
-              <ArrowRight size={18} />
-            </Link>
+           <Link
+              href={`/booking/${service._id}`}
+                  className="mt-7 flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3.5 font-semibold text-white transition hover:bg-blue-700"
+                          >
+                        Book This Service
+                      <ArrowRight size={18} />
+                        </Link>
 
             <p className="mt-4 text-center text-xs leading-5 text-slate-500">
               Sign in to request a repair service.
