@@ -1,6 +1,7 @@
 
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Wrench,
@@ -11,37 +12,12 @@ import {
   ArrowRight,
   Headphones,
   ShieldCheck,
-  BriefcaseBusiness,
   CalendarDays,
-  Settings,
 } from "lucide-react";
 
-const stats = [
-  {
-    label: "Total Services",
-    value: "0",
-    icon: Wrench,
-    color: "bg-blue-50 text-blue-600",
-  },
-  {
-    label: "Pending Requests",
-    value: "0",
-    icon: Clock3,
-    color: "bg-amber-50 text-amber-600",
-  },
-  {
-    label: "Accepted Requests",
-    value: "0",
-    icon: ClipboardList,
-    color: "bg-purple-50 text-purple-600",
-  },
-  {
-    label: "Completed Repairs",
-    value: "0",
-    icon: CheckCircle2,
-    color: "bg-emerald-50 text-emerald-600",
-  },
-];
+const API_URL = (
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"
+).replace(/\/$/, "");
 
 const quickActions = [
   {
@@ -55,7 +31,7 @@ const quickActions = [
     title: "My Services",
     description: "Manage, update, and monitor your listed repair services.",
     icon: Wrench,
-    href: "/dashboard/technician/services",
+    href: "/dashboard/technician/my-services",
     color: "bg-purple-50 text-purple-600",
   },
   {
@@ -68,6 +44,115 @@ const quickActions = [
 ];
 
 export default function TechnicianDashboard() {
+  const [services, setServices] = useState([]);
+  const [bookings, setBookings] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchDashboardData = async () => {
+      try {
+        setLoading(true);
+        setError("");
+
+        const [servicesResponse, bookingsResponse] = await Promise.all([
+          fetch(`${API_URL}/api/services/my-services`, {
+            method: "GET",
+            credentials: "include",
+            cache: "no-store",
+          }),
+          fetch(`${API_URL}/api/bookings/technician-requests`, {
+            method: "GET",
+            credentials: "include",
+            cache: "no-store",
+          }),
+        ]);
+
+        const [servicesData, bookingsData] = await Promise.all([
+          servicesResponse.json(),
+          bookingsResponse.json(),
+        ]);
+
+        if (!servicesResponse.ok) {
+          throw new Error(
+            servicesData.message || "Failed to load your services."
+          );
+        }
+
+        if (!bookingsResponse.ok) {
+          throw new Error(
+            bookingsData.message || "Failed to load repair requests."
+          );
+        }
+
+        if (!isMounted) return;
+
+        setServices(
+          Array.isArray(servicesData.services) ? servicesData.services : []
+        );
+
+        setBookings(
+          Array.isArray(bookingsData.bookings) ? bookingsData.bookings : []
+        );
+      } catch (err) {
+        if (isMounted) {
+          setError(err.message || "Something went wrong. Please try again.");
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    fetchDashboardData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const stats = [
+    {
+      label: "Total Services",
+      value: loading ? "..." : services.length.toString(),
+      icon: Wrench,
+      color: "bg-blue-50 text-blue-600",
+    },
+    {
+      label: "Pending Requests",
+      value: loading
+        ? "..."
+        : bookings
+            .filter((booking) => booking.status === "requested")
+            .length.toString(),
+      icon: Clock3,
+      color: "bg-amber-50 text-amber-600",
+    },
+    {
+      label: "Accepted Requests",
+      value: loading
+        ? "..."
+        : bookings
+            .filter((booking) => booking.status === "accepted")
+            .length.toString(),
+      icon: ClipboardList,
+      color: "bg-purple-50 text-purple-600",
+    },
+    {
+      label: "Completed Repairs",
+      value: loading
+        ? "..."
+        : bookings
+            .filter((booking) => booking.status === "completed")
+            .length.toString(),
+      icon: CheckCircle2,
+      color: "bg-emerald-50 text-emerald-600",
+    },
+  ];
+
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-10 sm:px-6 lg:px-10">
       <div className="mx-auto max-w-7xl">
@@ -119,7 +204,7 @@ export default function TechnicianDashboard() {
             </p>
 
             <Link
-              href="/dashboard/technician/services"
+              href="/dashboard/technician/my-services"
               className="mt-6 inline-flex items-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-bold text-slate-900 transition hover:bg-blue-50"
             >
               Manage Services
@@ -147,6 +232,12 @@ export default function TechnicianDashboard() {
             </p>
           </div>
 
+          {error && (
+            <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+              {error}
+            </div>
+          )}
+
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             {stats.map((item) => {
               const Icon = item.icon;
@@ -169,7 +260,7 @@ export default function TechnicianDashboard() {
                   </div>
 
                   <h3 className="mt-4 text-3xl font-extrabold text-slate-900">
-                    {item.value}
+                    {loading ? "..." : error ? "—" : item.value}
                   </h3>
                 </div>
               );
@@ -225,28 +316,56 @@ export default function TechnicianDashboard() {
         </section>
 
         {/* Empty Requests */}
-        <section className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm sm:p-12">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
-            <CalendarDays size={30} />
-          </div>
+        {!loading && !error && bookings.length === 0 && (
+          <section className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm sm:p-12">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+              <CalendarDays size={30} />
+            </div>
 
-          <h2 className="mt-5 text-xl font-bold text-slate-900">
-            No Repair Requests Yet
-          </h2>
+            <h2 className="mt-5 text-xl font-bold text-slate-900">
+              No Repair Requests Yet
+            </h2>
 
-          <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
-            You haven't received any customer repair requests yet. Add your
-            repair services so customers can discover and book them.
-          </p>
+            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
+              You haven't received any customer repair requests yet. Add your
+              repair services so customers can discover and book them.
+            </p>
 
-          <Link
-            href="/dashboard/technician/add-service"
-            className="mt-6 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
-          >
-            Add Your First Service
-            <ArrowRight size={17} />
-          </Link>
-        </section>
+            <Link
+              href="/dashboard/technician/add-service"
+              className="mt-6 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
+            >
+              Add Your First Service
+              <ArrowRight size={17} />
+            </Link>
+          </section>
+        )}
+
+        {!loading && !error && bookings.length > 0 && (
+          <section className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm sm:p-12">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+              <CalendarDays size={30} />
+            </div>
+
+            <h2 className="mt-5 text-xl font-bold text-slate-900">
+              You Have Repair Requests!
+            </h2>
+
+            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
+              You have received {bookings.length} customer repair request
+              {bookings.length !== 1 ? "s" : ""}. Review the details and manage
+              your repair jobs.
+            </p>
+
+            <Link
+              href="/dashboard/technician/requests"
+              className="mt-6 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
+            >
+              View Repair Requests
+              <ArrowRight size={17} />
+            </Link>
+          </section>
+        )}
 
         {/* Support */}
         <div className="mt-7 flex flex-col items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-5 sm:flex-row">
