@@ -1,8 +1,8 @@
 
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useMemo, useState } from "react";
 import {
   ArrowRight,
   Clock3,
@@ -13,92 +13,92 @@ import {
   Settings,
   ShieldCheck,
   Smartphone,
-  Tablet,
+  Tv,
+  WashingMachine,
   Wrench,
+  Loader2,
+  MapPin,
+  AlertCircle,
+  RefreshCw,
 } from "lucide-react";
 
-const services = [
-  {
-    id: "1",
-    name: "Smartphone Repair",
-    category: "Smartphone",
-    price: 500,
-    duration: "1–2 hours",
-    description:
-      "Professional repair solutions for screen, battery, charging, and software issues.",
-    icon: Smartphone,
-  },
-  {
-    id: "2",
-    name: "Laptop Repair",
-    category: "Laptop",
-    price: 800,
-    duration: "2–4 hours",
-    description:
-      "Expert solutions for laptop hardware, keyboard, performance, and software problems.",
-    icon: Laptop,
-  },
-  {
-    id: "3",
-    name: "Tablet Repair",
-    category: "Tablet",
-    price: 600,
-    duration: "1–3 hours",
-    description:
-      "Reliable repair services for tablet display, battery, charging, and software issues.",
-    icon: Tablet,
-  },
-  {
-    id: "4",
-    name: "TV & Monitor Repair",
-    category: "TV & Monitor",
-    price: 1000,
-    duration: "2–5 hours",
-    description:
-      "Professional troubleshooting for display, power, and connectivity problems.",
-    icon: Monitor,
-  },
-  {
-    id: "5",
-    name: "Refrigerator Repair",
-    category: "Home Appliances",
-    price: 1200,
-    duration: "2–4 hours",
-    description:
-      "Dependable repair solutions for cooling problems and refrigerator maintenance.",
-    icon: Refrigerator,
-  },
-  {
-    id: "6",
-    name: "Washing Machine Repair",
-    category: "Home Appliances",
-    price: 900,
-    duration: "2–4 hours",
-    description:
-      "Professional troubleshooting for drainage, spinning, and water supply issues.",
-    icon: Settings,
-  },
-];
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
 const categories = [
   "All",
   "Smartphone",
-  "Laptop",
-  "Tablet",
-  "TV & Monitor",
-  "Home Appliances",
+  "Laptop & PC",
+  "AC",
+  "Refrigerator",
+  "TV",
+  "Washing Machine",
+  "Electrical",
 ];
 
+const categoryIcons = {
+  Smartphone,
+  "Laptop & PC": Laptop,
+  AC: Settings,
+  Refrigerator,
+  TV: Tv,
+  "Washing Machine": WashingMachine,
+  Electrical: Wrench,
+};
+
 export default function ServicesPage() {
+  const [services, setServices] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
   const [sort, setSort] = useState("default");
 
+  // Fetch approved and available services from backend
+  const fetchServices = async () => {
+    try {
+      setLoading(true);
+      setError("");
+
+      const response = await fetch(`${API_URL}/api/services`, {
+        method: "GET",
+        cache: "no-store",
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          result.message || "Unable to load services."
+        );
+      }
+
+      setServices(
+        Array.isArray(result.services) ? result.services : []
+      );
+    } catch (err) {
+      setError(err.message || "Something went wrong.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchServices();
+  }, []);
+
+  // Search, category filter and sorting
   const filteredServices = useMemo(() => {
     let result = services.filter((service) => {
+      const searchText = search.toLowerCase();
+
       const matchesSearch =
-        service.name.toLowerCase().includes(search.toLowerCase()) ||
-        service.description.toLowerCase().includes(search.toLowerCase());
+        service.title?.toLowerCase().includes(searchText) ||
+        service.description?.toLowerCase().includes(searchText) ||
+        service.category?.toLowerCase().includes(searchText) ||
+        service.technicianName?.toLowerCase().includes(searchText) ||
+        service.serviceArea?.toLowerCase().includes(searchText);
 
       const matchesCategory =
         category === "All" || service.category === category;
@@ -107,13 +107,17 @@ export default function ServicesPage() {
     });
 
     if (sort === "low-to-high") {
-      result.sort((a, b) => a.price - b.price);
+      result.sort(
+        (a, b) => Number(a.basePrice) - Number(b.basePrice)
+      );
     } else if (sort === "high-to-low") {
-      result.sort((a, b) => b.price - a.price);
+      result.sort(
+        (a, b) => Number(b.basePrice) - Number(a.basePrice)
+      );
     }
 
     return result;
-  }, [search, category, sort]);
+  }, [services, search, category, sort]);
 
   const resetFilters = () => {
     setSearch("");
@@ -140,8 +144,8 @@ export default function ServicesPage() {
             </h1>
 
             <p className="mt-5 text-base leading-8 text-slate-300">
-              Explore our repair services and connect with skilled
-              technicians to get your devices working again.
+              Explore our approved repair services and connect with
+              skilled technicians to get your devices working again.
             </p>
           </div>
         </div>
@@ -149,7 +153,7 @@ export default function ServicesPage() {
 
       {/* Services Section */}
       <section className="mx-auto max-w-7xl px-6 py-14 lg:px-8">
-        {/* Search and Filters */}
+        {/* Search and Sorting */}
         <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h2 className="text-2xl font-bold text-slate-900">
@@ -171,7 +175,7 @@ export default function ServicesPage() {
               <input
                 type="text"
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(event) => setSearch(event.target.value)}
                 placeholder="Search services..."
                 className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-11 pr-4 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:w-64"
               />
@@ -179,7 +183,7 @@ export default function ServicesPage() {
 
             <select
               value={sort}
-              onChange={(e) => setSort(e.target.value)}
+              onChange={(event) => setSort(event.target.value)}
               className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none focus:border-blue-500"
             >
               <option value="default">Default Sorting</option>
@@ -207,8 +211,8 @@ export default function ServicesPage() {
           ))}
         </div>
 
-        {/* Result Count */}
-        <div className="mt-8 flex items-center justify-between">
+        {/* Result Count and Refresh */}
+        <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm text-slate-500">
             Showing{" "}
             <span className="font-semibold text-slate-900">
@@ -217,85 +221,178 @@ export default function ServicesPage() {
             services
           </p>
 
-          {(search || category !== "All" || sort !== "default") && (
+          <div className="flex items-center gap-4">
+            {(search || category !== "All" || sort !== "default") && (
+              <button
+                type="button"
+                onClick={resetFilters}
+                className="text-sm font-semibold text-blue-600 hover:text-blue-700"
+              >
+                Reset Filters
+              </button>
+            )}
+
             <button
               type="button"
-              onClick={resetFilters}
-              className="text-sm font-semibold text-blue-600 hover:text-blue-700"
+              onClick={fetchServices}
+              disabled={loading}
+              className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 transition hover:text-blue-600 disabled:opacity-50"
             >
-              Reset Filters
+              <RefreshCw
+                size={16}
+                className={loading ? "animate-spin" : ""}
+              />
+              Refresh
             </button>
-          )}
+          </div>
         </div>
 
+        {/* Loading */}
+        {loading && (
+          <div className="mt-8 flex min-h-64 items-center justify-center rounded-2xl border border-slate-200 bg-white">
+            <div className="text-center">
+              <Loader2 className="mx-auto h-10 w-10 animate-spin text-blue-600" />
+              <p className="mt-4 text-sm font-medium text-slate-500">
+                Loading available services...
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Error */}
+        {!loading && error && (
+          <div className="mt-8 rounded-2xl border border-red-200 bg-red-50 px-6 py-12 text-center">
+            <AlertCircle className="mx-auto h-10 w-10 text-red-500" />
+
+            <h3 className="mt-4 text-xl font-bold text-red-700">
+              Unable to Load Services
+            </h3>
+
+            <p className="mt-2 text-sm text-red-600">{error}</p>
+
+            <button
+              type="button"
+              onClick={fetchServices}
+              className="mt-5 rounded-xl bg-red-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-red-700"
+            >
+              Try Again
+            </button>
+          </div>
+        )}
+
         {/* Service Cards */}
-        {filteredServices.length > 0 ? (
+        {!loading && !error && filteredServices.length > 0 && (
           <div className="mt-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {filteredServices.map((service) => {
-              const Icon = service.icon;
+              const Icon =
+                categoryIcons[service.category] || Wrench;
 
               return (
                 <article
-                  key={service.id}
-                  className="group flex flex-col rounded-2xl border border-slate-200 bg-white p-6 transition duration-300 hover:-translate-y-1 hover:border-blue-200 hover:shadow-xl hover:shadow-slate-200/60"
+                  key={service._id}
+                  className="group flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white transition duration-300 hover:-translate-y-1 hover:border-blue-200 hover:shadow-xl hover:shadow-slate-200/60"
                 >
-                  <div className="flex items-start justify-between">
-                    <div className="rounded-2xl bg-blue-50 p-4 text-blue-600 transition group-hover:bg-blue-600 group-hover:text-white">
-                      <Icon size={27} />
-                    </div>
+                  {/* Service Image */}
+                  <div className="relative h-52 overflow-hidden bg-slate-100">
+                    {service.image ? (
+                      <img
+                        src={service.image}
+                        alt={service.title || "Repair service"}
+                        className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div className="flex h-full items-center justify-center text-blue-500">
+                        <Icon size={55} />
+                      </div>
+                    )}
 
-                    <span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-600">
-                      {service.category}
+                    <span className="absolute right-3 top-3 rounded-full bg-green-100 px-3 py-1.5 text-xs font-semibold text-green-700">
+                      Available
                     </span>
                   </div>
 
-                  <h3 className="mt-6 text-xl font-bold text-slate-900">
-                    {service.name}
-                  </h3>
-
-                  <p className="mt-3 min-h-12 text-sm leading-6 text-slate-500">
-                    {service.description}
-                  </p>
-
-                  <div className="mt-6 flex items-center gap-2 text-sm text-slate-500">
-                    <Clock3 size={17} />
-                    <span>{service.duration}</span>
-                  </div>
-
-                  <div className="mt-6 border-t border-slate-100 pt-5">
-                    <div className="flex items-end justify-between gap-3">
-                      <div>
-                        <p className="text-xs font-medium text-slate-500">
-                          Starting from
-                        </p>
-
-                        <p className="mt-1 text-2xl font-bold text-slate-900">
-                          ৳{service.price}
-                        </p>
+                  <div className="flex flex-1 flex-col p-6">
+                    {/* Category */}
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="rounded-xl bg-blue-50 p-3 text-blue-600 transition group-hover:bg-blue-600 group-hover:text-white">
+                        <Icon size={25} />
                       </div>
 
-                      <Link
-                        href={`/services/${service.id}`}
-                        className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
-                      >
-                        View Details
-                        <ArrowRight size={16} />
-                      </Link>
+                      <span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-600">
+                        {service.category}
+                      </span>
                     </div>
 
-                    <p className="mt-4 flex items-start gap-2 text-xs leading-5 text-slate-500">
-                      <ShieldCheck
-                        size={15}
-                        className="mt-0.5 shrink-0 text-green-600"
-                      />
-                      Final price depends on technician inspection.
+                    {/* Title */}
+                    <h3 className="mt-5 text-xl font-bold text-slate-900">
+                      {service.title}
+                    </h3>
+
+                    {/* Description */}
+                    <p className="mt-3 min-h-12 text-sm leading-6 text-slate-500">
+                      {service.description}
                     </p>
+
+                    {/* Duration */}
+                    <div className="mt-5 flex items-center gap-2 text-sm text-slate-500">
+                      <Clock3 size={17} />
+                      <span>{service.estimatedDuration}</span>
+                    </div>
+
+                    {/* Technician */}
+                    <div className="mt-3 flex items-center gap-2 text-sm text-slate-500">
+                      <ShieldCheck size={17} className="text-green-600" />
+                      <span>
+                        {service.technicianName || "Verified Technician"}
+                      </span>
+                    </div>
+
+                    {/* Service Area */}
+                    <div className="mt-3 flex items-center gap-2 text-sm text-slate-500">
+                      <MapPin size={17} />
+                      <span>{service.serviceArea}</span>
+                    </div>
+
+                    {/* Price and Details */}
+                    <div className="mt-auto border-t border-slate-100 pt-5">
+                      <div className="mt-5 flex items-end justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-medium text-slate-500">
+                            Starting from
+                          </p>
+
+                          <p className="mt-1 text-2xl font-bold text-slate-900">
+                            ৳{service.basePrice}
+                          </p>
+                        </div>
+
+                        <Link
+                          href={`/services/${service._id}`}
+                          className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
+                        >
+                          View Details
+                          <ArrowRight size={16} />
+                        </Link>
+                      </div>
+
+                      <p className="mt-4 flex items-start gap-2 text-xs leading-5 text-slate-500">
+                        <ShieldCheck
+                          size={15}
+                          className="mt-0.5 shrink-0 text-green-600"
+                        />
+                        Service provided by an admin-approved technician.
+                      </p>
+                    </div>
                   </div>
                 </article>
               );
             })}
           </div>
-        ) : (
+        )}
+
+        {/* Empty State */}
+        {!loading && !error && filteredServices.length === 0 && (
           <div className="mt-8 rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center">
             <Search
               size={35}
@@ -307,7 +404,9 @@ export default function ServicesPage() {
             </h3>
 
             <p className="mt-2 text-sm text-slate-500">
-              Try another search term or change your category.
+              {services.length === 0
+                ? "No approved services are available right now."
+                : "Try another search term or change your category."}
             </p>
 
             <button
