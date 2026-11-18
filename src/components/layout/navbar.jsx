@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -25,7 +25,7 @@ const navLinks = [
   { name: "About Us", href: "/about" },
 ];
 
-export default function Navbar() {
+function NavbarContent() {
   const pathname = usePathname();
   const router = useRouter();
 
@@ -89,14 +89,12 @@ export default function Navbar() {
     }
   };
 
-  const ProfileActions = ({ mobile = false }) => (
+  const ProfileActions = () => (
     <>
       <Link
         href={dashboardPath}
         onClick={closeMenus}
-        className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-blue-50 hover:text-blue-600 ${
-          mobile ? "" : ""
-        }`}
+        className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-blue-50 hover:text-blue-600"
       >
         <LayoutDashboard size={18} />
         Dashboard
@@ -136,7 +134,7 @@ export default function Navbar() {
           className="group flex items-center gap-2.5"
           onClick={closeMenus}
         >
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-white shadow-lg shadow-blue-600/20 transition duration-300 group-hover:rotate-[-8deg] group-hover:scale-105">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-white shadow-lg shadow-blue-600/20 transition duration-300 group-hover:-rotate-6 group-hover:scale-105">
             <Wrench size={21} strokeWidth={2.5} />
           </div>
 
@@ -305,7 +303,7 @@ export default function Navbar() {
                 </div>
 
                 <div className="space-y-1">
-                  <ProfileActions mobile />
+                  <ProfileActions />
                 </div>
               </>
             ) : (
@@ -332,5 +330,17 @@ export default function Navbar() {
         </div>
       )}
     </header>
+  );
+}
+
+export default function Navbar() {
+  return (
+    <Suspense
+      fallback={
+        <div className="h-[76px] border-b border-slate-200/70 bg-white" />
+      }
+    >
+      <NavbarContent />
+    </Suspense>
   );
 }
