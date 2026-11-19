@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import {
   ArrowLeft,
   CalendarDays,
@@ -20,7 +20,8 @@ import {
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
-export default function BookingPage() {
+// Main booking component
+function BookingPageContent() {
   const params = useParams();
   const router = useRouter();
   const serviceId = params.id;
@@ -38,8 +39,14 @@ export default function BookingPage() {
     problemDescription: "",
   });
 
+  // Fetch service information
   useEffect(() => {
-    if (!serviceId) return;
+    if (!serviceId) {
+      setLoading(false);
+      return;
+    }
+
+    let isActive = true;
 
     async function fetchService() {
       try {
@@ -61,17 +68,31 @@ export default function BookingPage() {
           );
         }
 
-        setService(data.service);
+        if (isActive) {
+          setService(data.service);
+        }
       } catch (err) {
-        setError(err.message || "Something went wrong.");
+        if (isActive) {
+          setError(
+            err.message || "Something went wrong."
+          );
+          setService(null);
+        }
       } finally {
-        setLoading(false);
+        if (isActive) {
+          setLoading(false);
+        }
       }
     }
 
     fetchService();
+
+    return () => {
+      isActive = false;
+    };
   }, [serviceId]);
 
+  // Handle form changes
   function handleChange(e) {
     const { name, value } = e.target;
 
@@ -81,6 +102,7 @@ export default function BookingPage() {
     }));
   }
 
+  // Submit booking request
   async function handleSubmit(e) {
     e.preventDefault();
 
@@ -93,6 +115,13 @@ export default function BookingPage() {
       !formData.problemDescription.trim()
     ) {
       setError("Please fill in all required fields.");
+      return;
+    }
+
+    if (formData.problemDescription.trim().length < 20) {
+      setError(
+        "Problem description must be at least 20 characters."
+      );
       return;
     }
 
@@ -129,24 +158,32 @@ export default function BookingPage() {
 
       setSuccess(data.booking);
     } catch (err) {
-      setError(err.message || "Something went wrong. Please try again.");
+      setError(
+        err.message || "Something went wrong. Please try again."
+      );
     } finally {
       setSubmitting(false);
     }
   }
 
+  // Minimum booking date
   const today = new Date();
+
   const minimumDate = [
     today.getFullYear(),
     String(today.getMonth() + 1).padStart(2, "0"),
     String(today.getDate()).padStart(2, "0"),
   ].join("-");
 
+  // Loading state
   if (loading) {
     return (
       <main className="flex min-h-[60vh] items-center justify-center bg-slate-50 px-6">
         <div className="text-center">
-          <Loader2 className="mx-auto animate-spin text-blue-600" size={38} />
+          <Loader2
+            className="mx-auto animate-spin text-blue-600"
+            size={38}
+          />
           <p className="mt-4 font-medium text-slate-600">
             Loading booking information...
           </p>
@@ -155,6 +192,7 @@ export default function BookingPage() {
     );
   }
 
+  // Service not found
   if (!service) {
     return (
       <main className="flex min-h-[60vh] items-center justify-center bg-slate-50 px-6">
@@ -164,7 +202,8 @@ export default function BookingPage() {
           </h1>
 
           <p className="mt-3 text-slate-600">
-            {error || "This service is unavailable or may have been removed."}
+            {error ||
+              "This service is unavailable or may have been removed."}
           </p>
 
           <Link
@@ -179,6 +218,7 @@ export default function BookingPage() {
     );
   }
 
+  // Booking success screen
   if (success) {
     return (
       <main className="flex min-h-[70vh] items-center justify-center bg-slate-50 px-6 py-12">
@@ -202,12 +242,17 @@ export default function BookingPage() {
               {success.serviceTitle}
             </p>
 
-            <p className="mt-4 text-sm text-slate-500">Booking ID</p>
+            <p className="mt-4 text-sm text-slate-500">
+              Booking ID
+            </p>
             <p className="mt-1 break-all text-sm font-semibold text-slate-900">
               {success._id}
             </p>
 
-            <p className="mt-4 text-sm text-slate-500">Booking Status</p>
+            <p className="mt-4 text-sm text-slate-500">
+              Booking Status
+            </p>
+
             <span className="mt-2 inline-flex rounded-full bg-yellow-50 px-3 py-1 text-sm font-semibold capitalize text-yellow-700">
               {success.status || "requested"}
             </span>
@@ -232,6 +277,7 @@ export default function BookingPage() {
     );
   }
 
+  // Booking form
   return (
     <main className="min-h-screen bg-slate-50">
       <section className="mx-auto max-w-7xl px-6 py-12 lg:px-8">
@@ -372,7 +418,7 @@ export default function BookingPage() {
                   id="problemDescription"
                   name="problemDescription"
                   required
-                  minLength={5}
+                  minLength={20}
                   rows={5}
                   value={formData.problemDescription}
                   onChange={handleChange}
@@ -416,6 +462,7 @@ export default function BookingPage() {
             </button>
           </form>
 
+          {/* Service summary */}
           <aside className="h-fit overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
             {service.image && (
               <img
@@ -453,9 +500,12 @@ export default function BookingPage() {
                   </div>
 
                   <div>
-                    <p className="text-xs text-slate-500">Technician</p>
+                    <p className="text-xs text-slate-500">
+                      Technician
+                    </p>
                     <p className="mt-1 text-sm font-semibold text-slate-900">
-                      {service.technicianName || "Professional Technician"}
+                      {service.technicianName ||
+                        "Professional Technician"}
                     </p>
                   </div>
                 </div>
@@ -481,7 +531,9 @@ export default function BookingPage() {
                   </div>
 
                   <div>
-                    <p className="text-xs text-slate-500">Service Mode</p>
+                    <p className="text-xs text-slate-500">
+                      Service Mode
+                    </p>
                     <p className="mt-1 text-sm font-semibold text-slate-900">
                       {service.serviceMode || "Not specified"}
                     </p>
@@ -494,7 +546,9 @@ export default function BookingPage() {
                   </div>
 
                   <div>
-                    <p className="text-xs text-slate-500">Service Area</p>
+                    <p className="text-xs text-slate-500">
+                      Service Area
+                    </p>
                     <p className="mt-1 text-sm font-semibold text-slate-900">
                       {service.serviceArea || "Not specified"}
                     </p>
@@ -514,5 +568,28 @@ export default function BookingPage() {
         </div>
       </section>
     </main>
+  );
+}
+
+// Suspense boundary for useParams()
+export default function BookingPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="flex min-h-[60vh] items-center justify-center bg-slate-50 px-6">
+          <div className="text-center">
+            <Loader2
+              className="mx-auto animate-spin text-blue-600"
+              size={38}
+            />
+            <p className="mt-4 font-medium text-slate-600">
+              Loading booking page...
+            </p>
+          </div>
+        </main>
+      }
+    >
+      <BookingPageContent />
+    </Suspense>
   );
 }

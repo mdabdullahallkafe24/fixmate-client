@@ -1,8 +1,14 @@
 
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import {
+  usePathname,
+  useRouter,
+  useSearchParams,
+} from "next/navigation";
+
 import {
   ArrowRight,
   Clock3,
@@ -48,117 +54,128 @@ const categoryIcons = {
   Electrical: Wrench,
 };
 
-function formatDate(date) {
-  if (!date) return 0;
+// Services content
+function ServicesContent() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
 
-  const parsed = new Date(date).getTime();
-
-  return Number.isNaN(parsed) ? 0 : parsed;
-}
-
-export default function ServicesPage() {
   const [services, setServices] = useState([]);
+  const [serviceModes, setServiceModes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [refreshKey, setRefreshKey] = useState(0);
 
-  const [search, setSearch] = useState("");
-  const [category, setCategory] = useState("All");
-  const [sort, setSort] = useState("default");
-  const [maxPrice, setMaxPrice] = useState("");
+  // Read filters from URL
+  const search = searchParams.get("q") || "";
+  const category = searchParams.get("category") || "All";
+  const serviceMode = searchParams.get("serviceMode") || "All";
+  const sort = searchParams.get("sort") || "newest";
+  const maxPrice = searchParams.get("maxPrice") || "";
 
-  // Fetch approved and available services
-  const fetchServices = async () => {
-    try {
-      setLoading(true);
-      setError("");
+  const queryString = searchParams.toString();
 
-      const response = await fetch(`${API_URL}/api/services`, {
-        method: "GET",
-        cache: "no-store",
-      });
+  // Update URL query parameters
+  const updateQuery = useCallback(
+    (key, value) => {
+      const params = new URLSearchParams(searchParams.toString());
 
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          result.message || "Unable to load services."
-        );
+      if (!value || value === "All") {
+        params.delete(key);
+      } else {
+        params.set(key, value);
       }
 
-      setServices(
-        Array.isArray(result.services) ? result.services : []
-      );
-    } catch (err) {
-      console.error("Fetch services error:", err);
-      setError(err.message || "Something went wrong.");
-    } finally {
-      setLoading(false);
-    }
-  };
+      const query = params.toString();
 
+      router.replace(
+        query ? `${pathname}?${query}` : pathname,
+        { scroll: false }
+      );
+    },
+    [pathname, router, searchParams]
+  );
+
+  // Fetch services
   useEffect(() => {
+    let isActive = true;
+
+    const fetchServices = async () => {
+      try {
+        if (!isActive) return;
+
+        setLoading(true);
+        setError("");
+
+        const endpoint = queryString
+          ? `${API_URL}/api/services?${queryString}`
+          : `${API_URL}/api/services`;
+
+        const response = await fetch(endpoint, {
+          method: "GET",
+          cache: "no-store",
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            result.message || "Unable to load services."
+          );
+        }
+
+        // Ignore outdated requests
+        if (!isActive) return;
+
+        setServices(
+          Array.isArray(result.services)
+            ? result.services
+            : []
+        );
+
+        setServiceModes(
+          Array.isArray(result.serviceModes)
+            ? result.serviceModes
+            : []
+        );
+      } catch (err) {
+        // Ignore errors from an inactive effect
+        if (!isActive) return;
+
+        console.error("Fetch services error:", err);
+
+        setError(
+          err.message || "Something went wrong while loading services."
+        );
+      } finally {
+        if (isActive) {
+          setLoading(false);
+        }
+      }
+    };
+
     fetchServices();
-  }, []);
 
-  // Search, category, price filter and sorting
-  const filteredServices = useMemo(() => {
-    let result = services.filter((service) => {
-      const searchText = search.trim().toLowerCase();
+    // Cleanup: ignore the previous request instead of aborting it
+    return () => {
+      isActive = false;
+    };
+  }, [queryString, refreshKey]);
 
-      const matchesSearch =
-        !searchText ||
-        service.title?.toLowerCase().includes(searchText) ||
-        service.description?.toLowerCase().includes(searchText) ||
-        service.category?.toLowerCase().includes(searchText) ||
-        service.technicianName?.toLowerCase().includes(searchText) ||
-        service.serviceArea?.toLowerCase().includes(searchText);
-
-      const matchesCategory =
-        category === "All" || service.category === category;
-
-      const matchesPrice =
-        maxPrice === "" ||
-        Number(service.basePrice) <= Number(maxPrice);
-
-      return matchesSearch && matchesCategory && matchesPrice;
-    });
-
-    if (sort === "low-to-high") {
-      result.sort(
-        (a, b) => Number(a.basePrice) - Number(b.basePrice)
-      );
-    } else if (sort === "high-to-low") {
-      result.sort(
-        (a, b) => Number(b.basePrice) - Number(a.basePrice)
-      );
-    } else if (sort === "newest") {
-      result.sort((a, b) => {
-        const dateA = formatDate(a.createdAt || a.updatedAt);
-        const dateB = formatDate(b.createdAt || b.updatedAt);
-
-        return dateB - dateA;
-      });
-    }
-
-    return result;
-  }, [services, search, category, sort, maxPrice]);
-
+  // Clear all filters
   const resetFilters = () => {
-    setSearch("");
-    setCategory("All");
-    setSort("default");
-    setMaxPrice("");
+    router.replace(pathname, { scroll: false });
   };
 
   const hasActiveFilters =
     search.trim() !== "" ||
     category !== "All" ||
-    sort !== "default" ||
+    serviceMode !== "All" ||
+    sort !== "newest" ||
     maxPrice !== "";
 
   return (
     <main className="min-h-screen bg-slate-50">
-
       {/* Page Header */}
       <section className="bg-slate-950 px-6 py-16 text-white lg:py-20">
         <div className="mx-auto max-w-7xl">
@@ -185,7 +202,6 @@ export default function ServicesPage() {
 
       {/* Services Section */}
       <section className="mx-auto max-w-7xl px-6 py-14 lg:px-8">
-
         {/* Section Heading */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
@@ -206,9 +222,7 @@ export default function ServicesPage() {
 
         {/* Search and Filters */}
         <div className="mt-7 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-
             {/* Search */}
             <div className="relative lg:col-span-2">
               <Search
@@ -219,7 +233,9 @@ export default function ServicesPage() {
               <input
                 type="text"
                 value={search}
-                onChange={(event) => setSearch(event.target.value)}
+                onChange={(event) =>
+                  updateQuery("q", event.target.value)
+                }
                 placeholder="Search services, technician or location..."
                 className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-4 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100"
               />
@@ -235,7 +251,9 @@ export default function ServicesPage() {
                 type="number"
                 min="0"
                 value={maxPrice}
-                onChange={(event) => setMaxPrice(event.target.value)}
+                onChange={(event) =>
+                  updateQuery("maxPrice", event.target.value)
+                }
                 placeholder="Maximum Price"
                 className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-9 pr-4 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100"
               />
@@ -244,20 +262,40 @@ export default function ServicesPage() {
             {/* Sorting */}
             <select
               value={sort}
-              onChange={(event) => setSort(event.target.value)}
+              onChange={(event) =>
+                updateQuery("sort", event.target.value)
+              }
               className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100"
             >
-              <option value="default">Default Sorting</option>
               <option value="newest">Newest First</option>
-              <option value="low-to-high">Price: Low to High</option>
-              <option value="high-to-low">Price: High to Low</option>
+              <option value="low-to-high">
+                Price: Low to High
+              </option>
+              <option value="high-to-low">
+                Price: High to Low
+              </option>
             </select>
 
+            {/* Service Mode */}
+            <select
+              value={serviceMode}
+              onChange={(event) =>
+                updateQuery("serviceMode", event.target.value)
+              }
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100 sm:col-span-2 lg:col-span-2"
+            >
+              <option value="All">All Service Modes</option>
+
+              {serviceModes.map((mode) => (
+                <option key={mode} value={mode}>
+                  {mode}
+                </option>
+              ))}
+            </select>
           </div>
 
-          {/* Active Filter Information */}
+          {/* Active Filters */}
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
-
             <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
               <span className="font-semibold text-slate-700">
                 Filters:
@@ -266,6 +304,12 @@ export default function ServicesPage() {
               {category !== "All" && (
                 <span className="rounded-full bg-blue-50 px-3 py-1.5 text-blue-700">
                   {category}
+                </span>
+              )}
+
+              {serviceMode !== "All" && (
+                <span className="rounded-full bg-blue-50 px-3 py-1.5 text-blue-700">
+                  {serviceMode}
                 </span>
               )}
 
@@ -281,9 +325,15 @@ export default function ServicesPage() {
                 </span>
               )}
 
-              {!hasActiveFilters && (
-                <span>All services</span>
+              {sort !== "newest" && (
+                <span className="rounded-full bg-blue-50 px-3 py-1.5 text-blue-700">
+                  {sort === "low-to-high"
+                    ? "Price: Low to High"
+                    : "Price: High to Low"}
+                </span>
               )}
+
+              {!hasActiveFilters && <span>All services</span>}
             </div>
 
             {hasActiveFilters && (
@@ -313,7 +363,9 @@ export default function ServicesPage() {
                 <button
                   key={item}
                   type="button"
-                  onClick={() => setCategory(item)}
+                  onClick={() =>
+                    updateQuery("category", item)
+                  }
                   className={`rounded-full px-5 py-2.5 text-sm font-medium transition ${
                     isActive
                       ? "bg-blue-600 text-white shadow-sm"
@@ -332,10 +384,6 @@ export default function ServicesPage() {
           <p className="text-sm text-slate-500">
             Showing{" "}
             <span className="font-bold text-slate-900">
-              {filteredServices.length}
-            </span>{" "}
-            of{" "}
-            <span className="font-bold text-slate-900">
               {services.length}
             </span>{" "}
             services
@@ -343,7 +391,9 @@ export default function ServicesPage() {
 
           <button
             type="button"
-            onClick={fetchServices}
+            onClick={() =>
+              setRefreshKey((previous) => previous + 1)
+            }
             disabled={loading}
             className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 transition hover:text-blue-600 disabled:opacity-50"
           >
@@ -383,7 +433,9 @@ export default function ServicesPage() {
 
             <button
               type="button"
-              onClick={fetchServices}
+              onClick={() =>
+                setRefreshKey((previous) => previous + 1)
+              }
               className="mt-5 rounded-xl bg-red-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-red-700"
             >
               Try Again
@@ -392,24 +444,24 @@ export default function ServicesPage() {
         )}
 
         {/* Service Cards */}
-        {!loading && !error && filteredServices.length > 0 && (
+        {!loading && !error && services.length > 0 && (
           <div className="mt-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-
-            {filteredServices.map((service) => {
+            {services.map((service) => {
               const Icon =
                 categoryIcons[service.category] || Wrench;
+
+              const imageUrl = service.image || service.imageUrl;
 
               return (
                 <article
                   key={service._id}
                   className="group flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white transition duration-300 hover:-translate-y-1 hover:border-blue-200 hover:shadow-xl hover:shadow-slate-200/60"
                 >
-
                   {/* Service Image */}
                   <div className="relative h-52 overflow-hidden bg-slate-100">
-                    {service.image ? (
+                    {imageUrl ? (
                       <img
-                        src={service.image}
+                        src={imageUrl}
                         alt={service.title || "Repair service"}
                         className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
                         loading="lazy"
@@ -427,8 +479,6 @@ export default function ServicesPage() {
 
                   {/* Card Content */}
                   <div className="flex flex-1 flex-col p-6">
-
-                    {/* Category */}
                     <div className="flex items-start justify-between gap-3">
                       <div className="rounded-xl bg-blue-50 p-3 text-blue-600 transition group-hover:bg-blue-600 group-hover:text-white">
                         <Icon size={25} />
@@ -439,42 +489,47 @@ export default function ServicesPage() {
                       </span>
                     </div>
 
-                    {/* Title */}
                     <h3 className="mt-5 text-xl font-bold text-slate-900">
                       {service.title}
                     </h3>
 
-                    {/* Description */}
                     <p className="mt-3 min-h-12 text-sm leading-6 text-slate-500">
                       {service.description}
                     </p>
 
-                    {/* Duration */}
                     <div className="mt-5 flex items-center gap-2 text-sm text-slate-500">
                       <Clock3 size={17} />
                       <span>
-                        {service.estimatedDuration || "Duration not specified"}
+                        {service.estimatedDuration ||
+                          "Duration not specified"}
                       </span>
                     </div>
 
-                    {/* Technician */}
                     <div className="mt-3 flex items-center gap-2 text-sm text-slate-500">
                       <ShieldCheck
                         size={17}
                         className="text-green-600"
                       />
                       <span>
-                        {service.technicianName || "Verified Technician"}
+                        {service.technicianName ||
+                          "Verified Technician"}
                       </span>
                     </div>
 
-                    {/* Service Area */}
                     <div className="mt-3 flex items-center gap-2 text-sm text-slate-500">
                       <MapPin size={17} />
                       <span>
-                        {service.serviceArea || "Location not specified"}
+                        {service.serviceArea ||
+                          "Location not specified"}
                       </span>
                     </div>
+
+                    {service.serviceMode && (
+                      <div className="mt-3 flex items-center gap-2 text-sm text-slate-500">
+                        <Settings size={17} />
+                        <span>{service.serviceMode}</span>
+                      </div>
+                    )}
 
                     {/* Price and Details */}
                     <div className="mt-auto border-t border-slate-100 pt-5">
@@ -485,7 +540,10 @@ export default function ServicesPage() {
                           </p>
 
                           <p className="mt-1 text-2xl font-bold text-slate-900">
-                            ৳{Number(service.basePrice || 0).toLocaleString("en-BD")}
+                            ৳
+                            {Number(
+                              service.basePrice || 0
+                            ).toLocaleString("en-BD")}
                           </p>
                         </div>
 
@@ -514,7 +572,7 @@ export default function ServicesPage() {
         )}
 
         {/* Empty State */}
-        {!loading && !error && filteredServices.length === 0 && (
+        {!loading && !error && services.length === 0 && (
           <div className="mt-8 rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center">
             <Search
               size={35}
@@ -526,9 +584,7 @@ export default function ServicesPage() {
             </h3>
 
             <p className="mt-2 text-sm text-slate-500">
-              {services.length === 0
-                ? "No approved services are available right now."
-                : "No services match your current search and filters."}
+              No approved services match your current search and filters.
             </p>
 
             <button
@@ -540,8 +596,22 @@ export default function ServicesPage() {
             </button>
           </div>
         )}
-
       </section>
     </main>
+  );
+}
+
+// Main page
+export default function ServicesPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-slate-50">
+          <Loader2 className="h-10 w-10 animate-spin text-blue-600" />
+        </div>
+      }
+    >
+      <ServicesContent />
+    </Suspense>
   );
 }

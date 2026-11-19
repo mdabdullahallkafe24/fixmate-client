@@ -1,6 +1,7 @@
 
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { Suspense } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -16,6 +17,7 @@ const API_URL = (
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"
 ).replace(/\/$/, "");
 
+// Fetch service details
 async function getService(id) {
   try {
     const response = await fetch(
@@ -42,7 +44,22 @@ async function getService(id) {
   }
 }
 
-export default async function ServiceDetailsPage({ params }) {
+// Loading UI
+function ServiceDetailsLoading() {
+  return (
+    <main className="flex min-h-[60vh] items-center justify-center px-6">
+      <div className="text-center">
+        <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-blue-100 border-t-blue-600" />
+        <p className="mt-4 font-medium text-slate-600">
+          Loading service details...
+        </p>
+      </div>
+    </main>
+  );
+}
+
+// Service details content
+async function ServiceDetailsContent({ params }) {
   const { id } = await params;
 
   let service;
@@ -271,5 +288,14 @@ export default async function ServiceDetailsPage({ params }) {
         </div>
       </section>
     </main>
+  );
+}
+
+// Page component
+export default function ServiceDetailsPage({ params }) {
+  return (
+    <Suspense fallback={<ServiceDetailsLoading />}>
+      <ServiceDetailsContent params={params} />
+    </Suspense>
   );
 }
