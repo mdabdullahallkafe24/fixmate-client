@@ -1,36 +1,151 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# FixMate – Smart Home Appliance Repair Platform
 
-## Getting Started
+FixMate is a full-stack home appliance and smart device repair booking platform that connects customers with professional technicians. Customers can explore repair services, book appointments, track repair requests, and make secure online payments. Technicians can manage services and repair requests, while administrators manage users, services, bookings, and transactions.
 
-First, run the development server:
+## 👤 Admin Credentials
+
+Use the following credentials to access the Admin Dashboard:
+
+- **Email:** [Add admin email]
+- **Password:** [Add admin password]
+
+## 🚀 Key Features
+
+### Public Features
+- Responsive and user-friendly interface.
+- Browse approved and available repair services.
+- Search services by title and category.
+- Filter services by category and service mode.
+- Sort services by price and newest first.
+- View detailed service information.
+- User registration and login.
+- Google authentication.
+
+### Customer Features
+- Customer dashboard with booking statistics.
+- Book appliance repair services.
+- View and manage personal bookings.
+- Cancel pending booking requests.
+- Track repair request status.
+- Pay for completed repair services using Stripe.
+- View payment history.
+- Update personal profile information.
+
+### Technician Features
+- Technician dashboard.
+- Add, update, and delete repair services.
+- Upload service images using ImgBB.
+- Manage service availability.
+- View and manage customer booking requests.
+- Accept or reject repair requests.
+- Update repair progress.
+- Set the final repair amount.
+
+### Admin Features
+- Admin dashboard with platform statistics.
+- Manage users and user roles.
+- Approve or reject repair services.
+- Manage and monitor all bookings.
+- View payment transactions.
+- Monitor platform revenue.
+
+### Security & Payment
+- BetterAuth authentication.
+- Role-based dashboard access.
+- Protected routes and API communication.
+- JWT-based authorization.
+- Stripe Checkout integration.
+- Secure payment workflow.
+
+## 🛠️ Technologies Used
+
+### Frontend
+- Next.js (App Router)
+- React
+- JavaScript
+- Tailwind CSS
+- BetterAuth
+- Stripe
+- Lucide React
+- React Hot Toast / Toast notifications
+
+### Backend & Database
+- Node.js
+- Express.js
+- MongoDB
+- JWT
+- Stripe
+- ImgBB API
+
+## 📦 Installation & Setup
+
+### 1. Clone the repository
+
+```bash
+git clone YOUR_FRONTEND_REPOSITORY_URL
+```
+
+### 2. Navigate to the project directory
+
+```bash
+cd fixmate-client
+```
+
+### 3. Install dependencies
+
+```bash
+npm install
+```
+
+### 4. Configure environment variables
+
+Create a `.env.local` file in the project root and configure the required environment variables.
+
+```env
+NEXT_PUBLIC_API_URL=http://localhost:5000
+```
+
+Add any other authentication or public environment variables required by your project configuration.
+
+### 5. Start the development server
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+### 6. Create a production build
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run build
+```
 
-## Learn More
+## 👥 User Roles
 
-To learn more about Next.js, take a look at the following resources:
+FixMate supports three types of users:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| Role | Responsibilities |
+|---|---|
+| Customer | Browse services, book repairs, track requests, and make payments |
+| Technician | Manage repair services and customer requests |
+| Admin | Manage users, service approvals, bookings, and transactions |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## 💳 Payment Integration
 
-## Deploy on Vercel
+FixMate uses Stripe Checkout for secure online payments. Customers can make payments after their repair service has been completed.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+For testing, Stripe provides the following test card:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- **Card Number:** 4242 4242 4242 4242
+- **Expiry Date:** Any future date
+- **CVC:** Any 3 digits
+- **ZIP:** Any valid ZIP code
+
+## 📱 Responsive Design
+
+The application is designed to work across desktop, tablet, and mobile devices.
+
+## 📄 License
+
+This project was developed as part of an academic assignment.
