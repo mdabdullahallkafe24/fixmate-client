@@ -2,7 +2,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -15,6 +15,10 @@ import {
   Search,
   Wrench,
   XCircle,
+  CreditCard,
+  ShieldCheck,
+  AlertCircle,
+  Banknote,
 } from "lucide-react";
 
 const API_URL = (
@@ -26,6 +30,7 @@ const statusStyles = {
   accepted: "bg-blue-50 text-blue-700 border-blue-200",
   rejected: "bg-red-50 text-red-700 border-red-200",
   "in-progress": "bg-purple-50 text-purple-700 border-purple-200",
+  "awaiting-payment": "bg-orange-50 text-orange-700 border-orange-200",
   completed: "bg-emerald-50 text-emerald-700 border-emerald-200",
   cancelled: "bg-slate-100 text-slate-600 border-slate-200",
 };
@@ -46,10 +51,15 @@ const statusMessages = {
     description:
       "The technician is currently working on your repair. Please wait for the completion update.",
   },
+  "awaiting-payment": {
+    title: "Your repair is ready for payment!",
+    description:
+      "The technician has finished the repair and submitted the final amount. Please review the amount and complete your payment.",
+  },
   completed: {
     title: "Your repair has been completed successfully!",
     description:
-      "Great news! The technician has marked your repair as completed. Your device repair is done.",
+      "The technician has confirmed the completion of your repair.",
   },
   rejected: {
     title: "Your repair request was rejected.",
@@ -58,8 +68,7 @@ const statusMessages = {
   },
   cancelled: {
     title: "This booking has been cancelled.",
-    description:
-      "This repair booking is no longer active.",
+    description: "This repair booking is no longer active.",
   },
 };
 
@@ -102,11 +111,26 @@ function formatStatus(status) {
     .join(" ");
 }
 
+function formatPrice(price) {
+  if (price === null || price === undefined || price === "") {
+    return "Not specified";
+  }
+
+  return `৳${Number(price).toLocaleString("en-BD")}`;
+}
+
 export default function MyBookingsPage() {
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [payingId, setPayingId] = useState(null);
+  const [paymentError, setPaymentError] = useState("");
+  const [paymentMessage, setPaymentMessage] = useState("");
 
+  // Prevent duplicate verification during React Strict Mode
+  const verificationStarted = useRef(false);
+
+  // Fetch customer bookings
   const fetchBookings = useCallback(async () => {
     try {
       setLoading(true);
@@ -143,7 +167,6 @@ export default function MyBookingsPage() {
   useEffect(() => {
     fetchBookings();
 
-    // Refresh booking status when the customer returns to this tab.
     const handleFocus = () => {
       fetchBookings();
     };
@@ -154,6 +177,140 @@ export default function MyBookingsPage() {
       window.removeEventListener("focus", handleFocus);
     };
   }, [fetchBookings]);
+
+  // Verify Stripe payment after returning from Checkout
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const paymentResult = params.get("payment");
+    const sessionId = params.get("session_id");
+
+    if (paymentResult === "success") {
+      if (!sessionId) {
+        setPaymentError(
+          "Payment session ID was not found. Please refresh your bookings or contact support."
+        );
+        fetchBookings();
+        return;
+      }
+
+      if (verificationStarted.current) return;
+
+      verificationStarted.current = true;
+
+      const verifyPayment = async () => {
+        try {
+          setPaymentError("");
+          setPaymentMessage(
+            "Verifying your payment securely. Please wait..."
+          );
+
+          const response = await fetch(
+            `${API_URL}/api/payments/verify-checkout-session`,
+            {
+              method: "POST",
+              credentials: "include",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ sessionId }),
+            }
+          );
+
+          const data = await response.json();
+
+          if (!response.ok || !data.success) {
+            throw new Error(
+              data.message || "Payment verification failed."
+            );
+          }
+
+          setPaymentMessage(
+            "Payment verified successfully! Your booking payment status has been updated."
+          );
+
+          await fetchBookings();
+        } catch (err) {
+          setPaymentMessage("");
+          setPaymentError(
+            err.message ||
+              "Unable to verify your payment. Please refresh and try again."
+          );
+
+          // Still reload bookings in case the webhook already updated them
+          await fetchBookings();
+        } finally {
+          // Remove payment query parameters from the URL
+          const cleanUrl = new URL(window.location.href);
+          cleanUrl.searchParams.delete("payment");
+          cleanUrl.searchParams.delete("session_id");
+
+          window.history.replaceState(
+            {},
+            "",
+            cleanUrl.pathname + cleanUrl.search + cleanUrl.hash
+          );
+        }
+      };
+
+      verifyPayment();
+    } else if (paymentResult === "cancelled") {
+      setPaymentMessage(
+        "Payment was cancelled. You can try again whenever you are ready."
+      );
+
+      const cleanUrl = new URL(window.location.href);
+      cleanUrl.searchParams.delete("payment");
+
+      window.history.replaceState(
+        {},
+        "",
+        cleanUrl.pathname + cleanUrl.search + cleanUrl.hash
+      );
+
+      fetchBookings();
+    }
+  }, [fetchBookings]);
+
+  // Create Stripe Checkout Session
+  const handlePayment = async (bookingId) => {
+    try {
+      setPayingId(bookingId);
+      setPaymentError("");
+      setPaymentMessage("");
+
+      const response = await fetch(
+        `${API_URL}/api/payments/create-checkout-session`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ bookingId }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(
+          data.message || "Unable to create payment session."
+        );
+      }
+
+      if (!data.checkoutUrl) {
+        throw new Error("Stripe Checkout URL was not returned.");
+      }
+
+      window.location.href = data.checkoutUrl;
+    } catch (err) {
+      setPaymentError(
+        err.message || "Something went wrong while starting payment."
+      );
+
+      setPayingId(null);
+    }
+  };
 
   const totalBookings = bookings.length;
 
@@ -168,6 +325,7 @@ export default function MyBookingsPage() {
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-10 sm:px-6 lg:px-10">
       <div className="mx-auto max-w-7xl">
+
         {/* Back Navigation */}
         <Link
           href="/dashboard/customer"
@@ -245,12 +403,27 @@ export default function MyBookingsPage() {
                 </div>
 
                 <h2 className="mt-4 text-3xl font-extrabold text-slate-900">
-                  {loading ? "—" : error ? "—" : item.value}
+                  {loading || error ? "—" : item.value}
                 </h2>
               </div>
             );
           })}
         </section>
+
+        {/* Payment Return Message */}
+        {paymentMessage && (
+          <div className="mt-6 flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+            <CheckCircle2 size={19} className="mt-0.5 shrink-0" />
+            <p>{paymentMessage}</p>
+          </div>
+        )}
+
+        {paymentError && (
+          <div className="mt-6 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+            <AlertCircle size={19} className="mt-0.5 shrink-0" />
+            <p>{paymentError}</p>
+          </div>
+        )}
 
         {/* Loading */}
         {loading && (
@@ -333,10 +506,31 @@ export default function MyBookingsPage() {
             <div className="space-y-5">
               {bookings.map((booking) => {
                 const currentStatus = booking.status || "requested";
+
                 const statusMessage =
                   statusMessages[currentStatus] || statusMessages.requested;
 
                 const completedAt = formatDateTime(booking.completedAt);
+
+                const paymentStatus = (
+                  booking.paymentStatus || "unpaid"
+                ).toLowerCase();
+
+                const isAwaitingPayment =
+                  currentStatus === "awaiting-payment";
+
+                const isCompleted = currentStatus === "completed";
+                const isPaid = paymentStatus === "paid";
+
+                const isPayable =
+                  isAwaitingPayment &&
+                  !isPaid &&
+                  Number(booking.finalAmount) > 0;
+
+                const isPaying = payingId === booking._id;
+
+                const showPaymentSection =
+                  isAwaitingPayment || isCompleted;
 
                 return (
                   <article
@@ -344,6 +538,7 @@ export default function MyBookingsPage() {
                     className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:shadow-md"
                   >
                     <div className="grid md:grid-cols-[220px_1fr]">
+
                       {/* Service Image */}
                       <div className="h-52 bg-slate-100 md:h-full">
                         {booking.serviceImage ? (
@@ -361,6 +556,8 @@ export default function MyBookingsPage() {
 
                       {/* Booking Information */}
                       <div className="p-6 sm:p-7">
+
+                        {/* Title and Status */}
                         <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
                           <div>
                             <span className="inline-flex rounded-full bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">
@@ -368,7 +565,7 @@ export default function MyBookingsPage() {
                             </span>
 
                             <h3 className="mt-3 text-xl font-bold text-slate-900">
-                              {booking.serviceTitle}
+                              {booking.serviceTitle || "Repair Service"}
                             </h3>
 
                             <p className="mt-2 text-sm text-slate-500">
@@ -392,22 +589,29 @@ export default function MyBookingsPage() {
                         {/* Booking Status Message */}
                         <div
                           className={`mt-5 rounded-xl border p-4 ${
-                            currentStatus === "completed"
+                            isCompleted
                               ? "border-emerald-200 bg-emerald-50"
-                              : currentStatus === "rejected"
-                                ? "border-red-200 bg-red-50"
-                                : currentStatus === "in-progress"
-                                  ? "border-purple-200 bg-purple-50"
-                                  : currentStatus === "accepted"
-                                    ? "border-blue-200 bg-blue-50"
-                                    : "border-amber-200 bg-amber-50"
+                              : isAwaitingPayment
+                                ? "border-orange-200 bg-orange-50"
+                                : currentStatus === "rejected"
+                                  ? "border-red-200 bg-red-50"
+                                  : currentStatus === "in-progress"
+                                    ? "border-purple-200 bg-purple-50"
+                                    : currentStatus === "accepted"
+                                      ? "border-blue-200 bg-blue-50"
+                                      : "border-amber-200 bg-amber-50"
                           }`}
                         >
                           <div className="flex items-start gap-3">
-                            {currentStatus === "completed" ? (
+                            {isCompleted ? (
                               <CheckCircle2
                                 size={21}
                                 className="mt-0.5 shrink-0 text-emerald-600"
+                              />
+                            ) : isAwaitingPayment ? (
+                              <Banknote
+                                size={21}
+                                className="mt-0.5 shrink-0 text-orange-600"
                               />
                             ) : currentStatus === "rejected" ? (
                               <XCircle
@@ -418,6 +622,11 @@ export default function MyBookingsPage() {
                               <Wrench
                                 size={21}
                                 className="mt-0.5 shrink-0 text-purple-600"
+                              />
+                            ) : currentStatus === "accepted" ? (
+                              <CheckCircle2
+                                size={21}
+                                className="mt-0.5 shrink-0 text-blue-600"
                               />
                             ) : (
                               <Clock3
@@ -435,7 +644,7 @@ export default function MyBookingsPage() {
                                 {statusMessage.description}
                               </p>
 
-                              {currentStatus === "completed" && completedAt && (
+                              {completedAt && isCompleted && (
                                 <p className="mt-2 text-xs font-semibold text-emerald-700">
                                   Completed on: {completedAt}
                                 </p>
@@ -446,7 +655,9 @@ export default function MyBookingsPage() {
 
                         <div className="my-5 border-t border-slate-100" />
 
+                        {/* Booking Details */}
                         <div className="grid gap-4 sm:grid-cols-2">
+
                           <div className="flex items-start gap-3">
                             <CalendarDays
                               size={19}
@@ -493,7 +704,7 @@ export default function MyBookingsPage() {
                               </p>
 
                               <p className="mt-1 break-words text-sm font-semibold text-slate-800">
-                                {booking.address}
+                                {booking.address || "Not provided"}
                               </p>
                             </div>
                           </div>
@@ -509,13 +720,21 @@ export default function MyBookingsPage() {
                                 Payment Status
                               </p>
 
-                              <p className="mt-1 text-sm font-semibold capitalize text-slate-800">
-                                {booking.paymentStatus || "Unpaid"}
+                              <p
+                                className={`mt-1 text-sm font-semibold ${
+                                  isPaid
+                                    ? "text-emerald-700"
+                                    : "text-amber-700"
+                                }`}
+                              >
+                                {formatStatus(paymentStatus)}
                               </p>
                             </div>
                           </div>
+
                         </div>
 
+                        {/* Starting Price and Service Link */}
                         <div className="mt-6 flex flex-col justify-between gap-4 border-t border-slate-100 pt-5 sm:flex-row sm:items-center">
                           <div>
                             <p className="text-xs text-slate-500">
@@ -523,10 +742,7 @@ export default function MyBookingsPage() {
                             </p>
 
                             <p className="mt-1 text-xl font-extrabold text-slate-900">
-                              ৳
-                              {Number(
-                                booking.basePrice || 0
-                              ).toLocaleString("en-BD")}
+                              {formatPrice(booking.basePrice)}
                             </p>
                           </div>
 
@@ -538,6 +754,112 @@ export default function MyBookingsPage() {
                             <ArrowRight size={17} />
                           </Link>
                         </div>
+
+                        {/* Customer Payment Section */}
+                        {showPaymentSection && (
+                          <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-5">
+
+                            {/* Already Paid */}
+                            {isPaid ? (
+                              <div className="flex items-center gap-3">
+                                <div className="rounded-xl bg-emerald-100 p-3 text-emerald-700">
+                                  <ShieldCheck size={24} />
+                                </div>
+
+                                <div>
+                                  <p className="font-bold text-emerald-800">
+                                    Payment Completed
+                                  </p>
+
+                                  <p className="mt-1 text-sm text-slate-600">
+                                    Your payment for this repair has been received successfully.
+                                  </p>
+                                </div>
+                              </div>
+                            ) : isPayable ? (
+                              <>
+                                <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+                                  <div>
+                                    <p className="font-bold text-slate-900">
+                                      Complete Your Payment
+                                    </p>
+
+                                    <p className="mt-1 text-sm text-slate-500">
+                                      The technician has submitted your final repair amount. Pay securely through Stripe.
+                                    </p>
+                                  </div>
+
+                                  <span className="w-fit rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700">
+                                    Payment Required
+                                  </span>
+                                </div>
+
+                                {/* Final Amount */}
+                                <div className="mt-4 flex flex-col justify-between gap-4 border-t border-slate-200 pt-4 sm:flex-row sm:items-center">
+                                  <div>
+                                    <p className="text-xs font-medium text-slate-500">
+                                      Final Repair Amount
+                                    </p>
+
+                                    <p className="mt-1 text-2xl font-extrabold text-slate-900">
+                                      {formatPrice(booking.finalAmount)}
+                                    </p>
+                                  </div>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => handlePayment(booking._id)}
+                                    disabled={
+                                      isPaying || payingId !== null
+                                    }
+                                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-green-600 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-green-600/20 transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                  >
+                                    {isPaying ? (
+                                      <>
+                                        <Loader2
+                                          size={18}
+                                          className="animate-spin"
+                                        />
+                                        Redirecting...
+                                      </>
+                                    ) : (
+                                      <>
+                                        <CreditCard size={18} />
+                                        Pay Now
+                                      </>
+                                    )}
+                                  </button>
+                                </div>
+
+                                <p className="mt-3 text-xs text-slate-500">
+                                  <ShieldCheck
+                                    size={13}
+                                    className="mr-1 inline"
+                                  />
+                                  Secure payment powered by Stripe.
+                                </p>
+                              </>
+                            ) : (
+                              <div className="flex items-center gap-3">
+                                <div className="rounded-xl bg-slate-200 p-3 text-slate-600">
+                                  <Clock3 size={23} />
+                                </div>
+
+                                <div>
+                                  <p className="font-bold text-slate-800">
+                                    Payment Not Available
+                                  </p>
+
+                                  <p className="mt-1 text-sm text-slate-500">
+                                    The final payment amount has not been submitted yet.
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+
+                          </div>
+                        )}
+
                       </div>
                     </div>
                   </article>
@@ -557,8 +879,8 @@ export default function MyBookingsPage() {
             Back to Customer Dashboard
           </Link>
         </div>
+
       </div>
     </main>
   );
 }
-

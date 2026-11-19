@@ -8,6 +8,7 @@ import {
   Wrench,
   ClipboardList,
   CalendarCheck,
+  CreditCard,
   ArrowRight,
   RefreshCw,
   ShieldCheck,
@@ -72,6 +73,12 @@ const adminLinks = [
     href: "/dashboard/admin/bookings",
     icon: CalendarCheck,
   },
+  {
+    title: "Transaction Management",
+    description: "View customer payments and monitor all platform transactions.",
+    href: "/dashboard/admin/transactions",
+    icon: CreditCard,
+  },
 ];
 
 export default function AdminDashboardPage() {
@@ -112,11 +119,7 @@ export default function AdminDashboardPage() {
           bookingsRes.json(),
         ]);
 
-      if (
-        !usersRes.ok ||
-        !servicesRes.ok ||
-        !bookingsRes.ok
-      ) {
+      if (!usersRes.ok || !servicesRes.ok || !bookingsRes.ok) {
         throw new Error(
           usersData.message ||
             servicesData.message ||
@@ -166,6 +169,7 @@ export default function AdminDashboardPage() {
       <div className="flex min-h-[60vh] items-center justify-center">
         <div className="text-center">
           <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
+
           <p className="mt-4 text-sm text-slate-500">
             Loading admin dashboard...
           </p>
@@ -239,10 +243,12 @@ export default function AdminDashboardPage() {
         {error && (
           <div className="mb-6 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
             <AlertCircle size={20} className="shrink-0" />
+
             <div>
               <p className="font-semibold">
                 Unable to load dashboard data
               </p>
+
               <p className="mt-1">{error}</p>
             </div>
           </div>
@@ -338,7 +344,10 @@ export default function AdminDashboardPage() {
         {/* Footer Note */}
         <div className="mt-10 rounded-xl border border-blue-100 bg-blue-50 p-5">
           <div className="flex items-center gap-3">
-            <ShieldCheck className="shrink-0 text-blue-600" size={23} />
+            <ShieldCheck
+              className="shrink-0 text-blue-600"
+              size={23}
+            />
 
             <div>
               <h3 className="font-semibold text-slate-900">
@@ -346,7 +355,7 @@ export default function AdminDashboardPage() {
               </h3>
 
               <p className="mt-1 text-sm text-slate-600">
-                Monitor users, services and bookings from one place.
+                Monitor users, services, bookings and transactions from one place.
               </p>
             </div>
           </div>

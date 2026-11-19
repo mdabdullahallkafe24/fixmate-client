@@ -7,7 +7,6 @@ import {
   ArrowRight,
   Clock3,
   Laptop,
-  Monitor,
   Refrigerator,
   Search,
   Settings,
@@ -20,10 +19,13 @@ import {
   MapPin,
   AlertCircle,
   RefreshCw,
+  SlidersHorizontal,
+  X,
 } from "lucide-react";
 
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+const API_URL = (
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"
+).replace(/\/$/, "");
 
 const categories = [
   "All",
@@ -37,14 +39,22 @@ const categories = [
 ];
 
 const categoryIcons = {
-  Smartphone,
+  Smartphone: Smartphone,
   "Laptop & PC": Laptop,
   AC: Settings,
-  Refrigerator,
+  Refrigerator: Refrigerator,
   TV: Tv,
   "Washing Machine": WashingMachine,
   Electrical: Wrench,
 };
+
+function formatDate(date) {
+  if (!date) return 0;
+
+  const parsed = new Date(date).getTime();
+
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
 
 export default function ServicesPage() {
   const [services, setServices] = useState([]);
@@ -54,8 +64,9 @@ export default function ServicesPage() {
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
   const [sort, setSort] = useState("default");
+  const [maxPrice, setMaxPrice] = useState("");
 
-  // Fetch approved and available services from backend
+  // Fetch approved and available services
   const fetchServices = async () => {
     try {
       setLoading(true);
@@ -78,6 +89,7 @@ export default function ServicesPage() {
         Array.isArray(result.services) ? result.services : []
       );
     } catch (err) {
+      console.error("Fetch services error:", err);
       setError(err.message || "Something went wrong.");
     } finally {
       setLoading(false);
@@ -88,12 +100,13 @@ export default function ServicesPage() {
     fetchServices();
   }, []);
 
-  // Search, category filter and sorting
+  // Search, category, price filter and sorting
   const filteredServices = useMemo(() => {
     let result = services.filter((service) => {
-      const searchText = search.toLowerCase();
+      const searchText = search.trim().toLowerCase();
 
       const matchesSearch =
+        !searchText ||
         service.title?.toLowerCase().includes(searchText) ||
         service.description?.toLowerCase().includes(searchText) ||
         service.category?.toLowerCase().includes(searchText) ||
@@ -103,7 +116,11 @@ export default function ServicesPage() {
       const matchesCategory =
         category === "All" || service.category === category;
 
-      return matchesSearch && matchesCategory;
+      const matchesPrice =
+        maxPrice === "" ||
+        Number(service.basePrice) <= Number(maxPrice);
+
+      return matchesSearch && matchesCategory && matchesPrice;
     });
 
     if (sort === "low-to-high") {
@@ -114,19 +131,34 @@ export default function ServicesPage() {
       result.sort(
         (a, b) => Number(b.basePrice) - Number(a.basePrice)
       );
+    } else if (sort === "newest") {
+      result.sort((a, b) => {
+        const dateA = formatDate(a.createdAt || a.updatedAt);
+        const dateB = formatDate(b.createdAt || b.updatedAt);
+
+        return dateB - dateA;
+      });
     }
 
     return result;
-  }, [services, search, category, sort]);
+  }, [services, search, category, sort, maxPrice]);
 
   const resetFilters = () => {
     setSearch("");
     setCategory("All");
     setSort("default");
+    setMaxPrice("");
   };
+
+  const hasActiveFilters =
+    search.trim() !== "" ||
+    category !== "All" ||
+    sort !== "default" ||
+    maxPrice !== "";
 
   return (
     <main className="min-h-screen bg-slate-50">
+
       {/* Page Header */}
       <section className="bg-slate-950 px-6 py-16 text-white lg:py-20">
         <div className="mx-auto max-w-7xl">
@@ -153,8 +185,9 @@ export default function ServicesPage() {
 
       {/* Services Section */}
       <section className="mx-auto max-w-7xl px-6 py-14 lg:px-8">
-        {/* Search and Sorting */}
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+
+        {/* Section Heading */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h2 className="text-2xl font-bold text-slate-900">
               Available Services
@@ -165,8 +198,19 @@ export default function ServicesPage() {
             </p>
           </div>
 
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <div className="relative">
+          <div className="flex items-center gap-2 text-sm text-slate-500">
+            <SlidersHorizontal size={17} />
+            <span>Find services that fit your needs</span>
+          </div>
+        </div>
+
+        {/* Search and Filters */}
+        <div className="mt-7 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+
+            {/* Search */}
+            <div className="relative lg:col-span-2">
               <Search
                 size={19}
                 className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
@@ -176,75 +220,139 @@ export default function ServicesPage() {
                 type="text"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search services..."
-                className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-11 pr-4 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:w-64"
+                placeholder="Search services, technician or location..."
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-4 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100"
               />
             </div>
 
+            {/* Maximum Price */}
+            <div className="relative">
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-semibold text-slate-400">
+                ৳
+              </span>
+
+              <input
+                type="number"
+                min="0"
+                value={maxPrice}
+                onChange={(event) => setMaxPrice(event.target.value)}
+                placeholder="Maximum Price"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-9 pr-4 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100"
+              />
+            </div>
+
+            {/* Sorting */}
             <select
               value={sort}
               onChange={(event) => setSort(event.target.value)}
-              className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none focus:border-blue-500"
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100"
             >
               <option value="default">Default Sorting</option>
+              <option value="newest">Newest First</option>
               <option value="low-to-high">Price: Low to High</option>
               <option value="high-to-low">Price: High to Low</option>
             </select>
+
+          </div>
+
+          {/* Active Filter Information */}
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
+
+            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+              <span className="font-semibold text-slate-700">
+                Filters:
+              </span>
+
+              {category !== "All" && (
+                <span className="rounded-full bg-blue-50 px-3 py-1.5 text-blue-700">
+                  {category}
+                </span>
+              )}
+
+              {maxPrice !== "" && (
+                <span className="rounded-full bg-blue-50 px-3 py-1.5 text-blue-700">
+                  Max ৳{maxPrice}
+                </span>
+              )}
+
+              {search.trim() !== "" && (
+                <span className="rounded-full bg-blue-50 px-3 py-1.5 text-blue-700">
+                  Search: {search}
+                </span>
+              )}
+
+              {!hasActiveFilters && (
+                <span>All services</span>
+              )}
+            </div>
+
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={resetFilters}
+                className="inline-flex items-center gap-1.5 text-sm font-semibold text-blue-600 transition hover:text-blue-700"
+              >
+                <X size={15} />
+                Clear Filters
+              </button>
+            )}
           </div>
         </div>
 
         {/* Category Filters */}
-        <div className="mt-8 flex flex-wrap gap-2">
-          {categories.map((item) => (
-            <button
-              key={item}
-              type="button"
-              onClick={() => setCategory(item)}
-              className={`rounded-full px-5 py-2.5 text-sm font-medium transition ${
-                category === item
-                  ? "bg-blue-600 text-white shadow-sm"
-                  : "border border-slate-200 bg-white text-slate-600 hover:border-blue-300 hover:text-blue-600"
-              }`}
-            >
-              {item}
-            </button>
-          ))}
+        <div className="mt-7">
+          <p className="mb-3 text-sm font-semibold text-slate-700">
+            Browse by Category
+          </p>
+
+          <div className="flex flex-wrap gap-2">
+            {categories.map((item) => {
+              const isActive = category === item;
+
+              return (
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => setCategory(item)}
+                  className={`rounded-full px-5 py-2.5 text-sm font-medium transition ${
+                    isActive
+                      ? "bg-blue-600 text-white shadow-sm"
+                      : "border border-slate-200 bg-white text-slate-600 hover:border-blue-300 hover:text-blue-600"
+                  }`}
+                >
+                  {item}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* Result Count and Refresh */}
         <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm text-slate-500">
             Showing{" "}
-            <span className="font-semibold text-slate-900">
+            <span className="font-bold text-slate-900">
               {filteredServices.length}
+            </span>{" "}
+            of{" "}
+            <span className="font-bold text-slate-900">
+              {services.length}
             </span>{" "}
             services
           </p>
 
-          <div className="flex items-center gap-4">
-            {(search || category !== "All" || sort !== "default") && (
-              <button
-                type="button"
-                onClick={resetFilters}
-                className="text-sm font-semibold text-blue-600 hover:text-blue-700"
-              >
-                Reset Filters
-              </button>
-            )}
-
-            <button
-              type="button"
-              onClick={fetchServices}
-              disabled={loading}
-              className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 transition hover:text-blue-600 disabled:opacity-50"
-            >
-              <RefreshCw
-                size={16}
-                className={loading ? "animate-spin" : ""}
-              />
-              Refresh
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={fetchServices}
+            disabled={loading}
+            className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 transition hover:text-blue-600 disabled:opacity-50"
+          >
+            <RefreshCw
+              size={16}
+              className={loading ? "animate-spin" : ""}
+            />
+            Refresh
+          </button>
         </div>
 
         {/* Loading */}
@@ -252,6 +360,7 @@ export default function ServicesPage() {
           <div className="mt-8 flex min-h-64 items-center justify-center rounded-2xl border border-slate-200 bg-white">
             <div className="text-center">
               <Loader2 className="mx-auto h-10 w-10 animate-spin text-blue-600" />
+
               <p className="mt-4 text-sm font-medium text-slate-500">
                 Loading available services...
               </p>
@@ -268,7 +377,9 @@ export default function ServicesPage() {
               Unable to Load Services
             </h3>
 
-            <p className="mt-2 text-sm text-red-600">{error}</p>
+            <p className="mt-2 text-sm text-red-600">
+              {error}
+            </p>
 
             <button
               type="button"
@@ -283,6 +394,7 @@ export default function ServicesPage() {
         {/* Service Cards */}
         {!loading && !error && filteredServices.length > 0 && (
           <div className="mt-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+
             {filteredServices.map((service) => {
               const Icon =
                 categoryIcons[service.category] || Wrench;
@@ -292,6 +404,7 @@ export default function ServicesPage() {
                   key={service._id}
                   className="group flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white transition duration-300 hover:-translate-y-1 hover:border-blue-200 hover:shadow-xl hover:shadow-slate-200/60"
                 >
+
                   {/* Service Image */}
                   <div className="relative h-52 overflow-hidden bg-slate-100">
                     {service.image ? (
@@ -312,7 +425,9 @@ export default function ServicesPage() {
                     </span>
                   </div>
 
+                  {/* Card Content */}
                   <div className="flex flex-1 flex-col p-6">
+
                     {/* Category */}
                     <div className="flex items-start justify-between gap-3">
                       <div className="rounded-xl bg-blue-50 p-3 text-blue-600 transition group-hover:bg-blue-600 group-hover:text-white">
@@ -337,12 +452,17 @@ export default function ServicesPage() {
                     {/* Duration */}
                     <div className="mt-5 flex items-center gap-2 text-sm text-slate-500">
                       <Clock3 size={17} />
-                      <span>{service.estimatedDuration}</span>
+                      <span>
+                        {service.estimatedDuration || "Duration not specified"}
+                      </span>
                     </div>
 
                     {/* Technician */}
                     <div className="mt-3 flex items-center gap-2 text-sm text-slate-500">
-                      <ShieldCheck size={17} className="text-green-600" />
+                      <ShieldCheck
+                        size={17}
+                        className="text-green-600"
+                      />
                       <span>
                         {service.technicianName || "Verified Technician"}
                       </span>
@@ -351,7 +471,9 @@ export default function ServicesPage() {
                     {/* Service Area */}
                     <div className="mt-3 flex items-center gap-2 text-sm text-slate-500">
                       <MapPin size={17} />
-                      <span>{service.serviceArea}</span>
+                      <span>
+                        {service.serviceArea || "Location not specified"}
+                      </span>
                     </div>
 
                     {/* Price and Details */}
@@ -363,7 +485,7 @@ export default function ServicesPage() {
                           </p>
 
                           <p className="mt-1 text-2xl font-bold text-slate-900">
-                            ৳{service.basePrice}
+                            ৳{Number(service.basePrice || 0).toLocaleString("en-BD")}
                           </p>
                         </div>
 
@@ -406,7 +528,7 @@ export default function ServicesPage() {
             <p className="mt-2 text-sm text-slate-500">
               {services.length === 0
                 ? "No approved services are available right now."
-                : "Try another search term or change your category."}
+                : "No services match your current search and filters."}
             </p>
 
             <button
@@ -418,6 +540,7 @@ export default function ServicesPage() {
             </button>
           </div>
         )}
+
       </section>
     </main>
   );

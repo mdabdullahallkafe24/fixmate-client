@@ -14,6 +14,8 @@ import {
   RefreshCw,
   Wrench,
   XCircle,
+  X,
+  Banknote,
 } from "lucide-react";
 
 const API_URL = (
@@ -28,6 +30,8 @@ const getStatusStyle = (status) => {
       return "bg-red-50 text-red-700 border-red-200";
     case "in-progress":
       return "bg-purple-50 text-purple-700 border-purple-200";
+    case "awaiting-payment":
+      return "bg-orange-50 text-orange-700 border-orange-200";
     case "completed":
       return "bg-green-50 text-green-700 border-green-200";
     case "cancelled":
@@ -56,8 +60,15 @@ const formatPrice = (price) => {
     return "Not specified";
   }
 
-  return `৳${Number(price).toLocaleString("en-BD")}`;
+  const amount = Number(price);
+
+  if (!Number.isFinite(amount)) return "Not specified";
+
+  return `৳${amount.toLocaleString("en-BD")}`;
 };
+
+const normalizeStatus = (status) =>
+  String(status || "").trim().toLowerCase();
 
 export default function RepairRequestsPage() {
   const [bookings, setBookings] = useState([]);
@@ -66,11 +77,18 @@ export default function RepairRequestsPage() {
   const [updatingId, setUpdatingId] = useState(null);
   const [successMessage, setSuccessMessage] = useState("");
 
-  const fetchRequests = useCallback(async () => {
+  const [selectedBooking, setSelectedBooking] = useState(null);
+  const [finalAmount, setFinalAmount] = useState("");
+  const [amountError, setAmountError] = useState("");
+
+  // Fetch technician requests.
+  // Silent refresh prevents the whole page from showing a loader.
+  const fetchRequests = useCallback(async (silent = false) => {
     try {
-      setLoading(true);
-      setError("");
-      setSuccessMessage("");
+      if (!silent) {
+        setLoading(true);
+        setError("");
+      }
 
       const response = await fetch(
         `${API_URL}/api/bookings/technician-requests`,
@@ -84,37 +102,95 @@ export default function RepairRequestsPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.message || "Failed to load repair requests.");
+        throw new Error(
+          data.message || "Failed to load repair requests."
+        );
       }
 
-      setBookings(Array.isArray(data.bookings) ? data.bookings : []);
-    } catch (err) {
-      setError(
-        err.message ||
-          "Something went wrong while loading your repair requests."
+      setBookings(
+        Array.isArray(data.bookings) ? data.bookings : []
       );
+
+      if (!silent) {
+        setError("");
+      }
+    } catch (err) {
+      if (!silent) {
+        setError(
+          err.message ||
+            "Something went wrong while loading your repair requests."
+        );
+      }
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
     fetchRequests();
+
+    // Automatically refresh payment and booking status.
+    const intervalId = setInterval(() => {
+      fetchRequests(true);
+    }, 15000);
+
+    // Refresh when technician returns to this browser tab.
+    const handleFocus = () => {
+      fetchRequests(true);
+    };
+
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      clearInterval(intervalId);
+      window.removeEventListener("focus", handleFocus);
+    };
   }, [fetchRequests]);
 
-  // Update booking status
-  const handleStatusUpdate = async (bookingId, status) => {
+  const openCompletionModal = (booking) => {
+    setSelectedBooking(booking);
+
+    setFinalAmount(
+      booking.basePrice !== undefined &&
+        booking.basePrice !== null
+        ? String(booking.basePrice)
+        : ""
+    );
+
+    setAmountError("");
+    setError("");
+  };
+
+  const closeCompletionModal = () => {
+    if (updatingId !== null) return;
+
+    setSelectedBooking(null);
+    setFinalAmount("");
+    setAmountError("");
+  };
+
+  // Update booking status.
+  const handleStatusUpdate = async (
+    bookingId,
+    status,
+    amount = undefined
+  ) => {
     const actionMessages = {
       accepted: "accept this request",
       rejected: "reject this request",
       "in-progress": "start this repair",
-      completed: "complete this repair",
+      "awaiting-payment": "send the final repair amount",
+      completed: "confirm repair completion",
     };
 
     const successMessages = {
       accepted: "Repair request accepted successfully.",
       rejected: "Repair request rejected successfully.",
       "in-progress": "Repair work started successfully.",
+      "awaiting-payment":
+        "Final repair amount sent successfully. Waiting for customer payment.",
       completed: "Repair marked as completed successfully.",
     };
 
@@ -122,6 +198,12 @@ export default function RepairRequestsPage() {
       setUpdatingId(bookingId);
       setError("");
       setSuccessMessage("");
+
+      const requestBody = { status };
+
+      if (status === "awaiting-payment") {
+        requestBody.finalAmount = Number(amount);
+      }
 
       const response = await fetch(
         `${API_URL}/api/bookings/${bookingId}/status`,
@@ -131,7 +213,7 @@ export default function RepairRequestsPage() {
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ status }),
+          body: JSON.stringify(requestBody),
         }
       );
 
@@ -140,19 +222,34 @@ export default function RepairRequestsPage() {
       if (!response.ok) {
         throw new Error(
           data.message ||
-            `Failed to ${actionMessages[status] || "update this request"}.`
+            `Failed to ${
+              actionMessages[status] || "update this request"
+            }.`
         );
       }
 
-      // Update the booking immediately in the frontend
+      // Update local UI immediately.
       setBookings((previousBookings) =>
         previousBookings.map((booking) =>
           booking._id === bookingId
             ? {
                 ...booking,
                 status,
-                ...(status === "completed" && data.completedAt
-                  ? { completedAt: data.completedAt }
+
+                ...(status === "awaiting-payment"
+                  ? {
+                      finalAmount: Number(amount),
+                      paymentStatus: "pending",
+                    }
+                  : {}),
+
+                ...(status === "completed"
+                  ? {
+                      paymentStatus: "paid",
+                      ...(data.completedAt
+                        ? { completedAt: data.completedAt }
+                        : {}),
+                    }
                   : {}),
               }
             : booking
@@ -162,15 +259,66 @@ export default function RepairRequestsPage() {
       setSuccessMessage(
         data.message || successMessages[status]
       );
+
+      if (status === "awaiting-payment") {
+        setSelectedBooking(null);
+        setFinalAmount("");
+        setAmountError("");
+      }
+
+      // Fetch the latest server data after a successful update.
+      await fetchRequests(true);
     } catch (err) {
-      setError(err.message || "Could not update the repair request.");
+      if (status === "awaiting-payment") {
+        setAmountError(
+          err.message ||
+            "Could not send the final repair amount."
+        );
+      } else {
+        setError(
+          err.message ||
+            "Could not update the repair request."
+        );
+      }
     } finally {
       setUpdatingId(null);
     }
   };
 
+  const confirmCompletion = () => {
+    if (!selectedBooking) return;
+
+    const amount = Number(finalAmount);
+
+    if (
+      finalAmount.trim() === "" ||
+      !Number.isFinite(amount) ||
+      amount <= 0
+    ) {
+      setAmountError(
+        "Please enter a valid final amount greater than ৳0."
+      );
+      return;
+    }
+
+    // Sending the final amount means awaiting customer payment,
+    // not completed.
+    handleStatusUpdate(
+      selectedBooking._id,
+      "awaiting-payment",
+      amount
+    );
+  };
+
   const pendingCount = bookings.filter(
-    (booking) => booking.status === "requested"
+    (booking) =>
+      normalizeStatus(booking.status) === "requested"
+  ).length;
+
+  const paymentReceivedCount = bookings.filter(
+    (booking) =>
+      normalizeStatus(booking.paymentStatus) === "paid" &&
+      normalizeStatus(booking.status) === "awaiting-payment"
   ).length;
 
   return (
@@ -195,7 +343,7 @@ export default function RepairRequestsPage() {
 
           <button
             type="button"
-            onClick={fetchRequests}
+            onClick={() => fetchRequests()}
             disabled={loading || updatingId !== null}
             className="inline-flex items-center justify-center gap-2 self-start rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60 sm:self-auto"
           >
@@ -208,7 +356,7 @@ export default function RepairRequestsPage() {
         </div>
 
         {/* Summary */}
-        <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex items-center justify-between">
               <div>
@@ -242,6 +390,23 @@ export default function RepairRequestsPage() {
               </div>
             </div>
           </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-slate-500">
+                  Payments Received
+                </p>
+                <p className="mt-2 text-3xl font-bold text-green-600">
+                  {paymentReceivedCount}
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-green-50 p-3 text-green-600">
+                <Banknote size={24} />
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Messages */}
@@ -259,16 +424,18 @@ export default function RepairRequestsPage() {
           </div>
         )}
 
-        {/* Loading */}
+        {/* Loading and Booking List */}
         {loading ? (
           <div className="flex min-h-[300px] flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white">
-            <Loader2 className="mb-3 animate-spin text-blue-600" size={34} />
+            <Loader2
+              className="mb-3 animate-spin text-blue-600"
+              size={34}
+            />
             <p className="text-sm font-medium text-slate-500">
               Loading repair requests...
             </p>
           </div>
         ) : bookings.length === 0 ? (
-          /* Empty State */
           <div className="flex min-h-[320px] flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white px-5 text-center">
             <div className="mb-4 rounded-2xl bg-blue-50 p-5 text-blue-600">
               <Wrench size={36} />
@@ -279,21 +446,28 @@ export default function RepairRequestsPage() {
             </h2>
 
             <p className="mt-2 max-w-md text-sm leading-6 text-slate-500">
-              You do not have any repair requests yet. New customer requests
-              for your services will appear here.
+              You do not have any repair requests yet. New
+              customer requests for your services will appear here.
             </p>
           </div>
         ) : (
-          /* Request Cards */
           <div className="space-y-5">
             {bookings.map((booking) => {
               const isUpdating = updatingId === booking._id;
-              const isPending = booking.status === "requested";
-              const isAccepted = booking.status === "accepted";
-              const isInProgress = booking.status === "in-progress";
-              const isCompleted = booking.status === "completed";
-              const isRejected = booking.status === "rejected";
-              const isCancelled = booking.status === "cancelled";
+
+              const status = normalizeStatus(booking.status);
+              const paymentStatus = normalizeStatus(
+                booking.paymentStatus
+              );
+
+              const isPending = status === "requested";
+              const isAccepted = status === "accepted";
+              const isInProgress = status === "in-progress";
+              const isAwaitingPayment = status === "awaiting-payment";
+              const isPaymentPaid = paymentStatus === "paid";
+              const isCompleted = status === "completed";
+              const isRejected = status === "rejected";
+              const isCancelled = status === "cancelled";
 
               return (
                 <article
@@ -321,15 +495,22 @@ export default function RepairRequestsPage() {
                       <div className="mb-3 flex flex-wrap items-center gap-2">
                         <span
                           className={`rounded-full border px-3 py-1 text-xs font-semibold capitalize ${getStatusStyle(
-                            booking.status
+                            status
                           )}`}
                         >
-                          {(booking.status || "requested").replace("-", " ")}
+                          {(status || "requested").replace("-", " ")}
                         </span>
 
                         {booking.category && (
                           <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
                             {booking.category}
+                          </span>
+                        )}
+
+                        {isPaymentPaid && (
+                          <span className="inline-flex items-center gap-1 rounded-full border border-green-200 bg-green-50 px-3 py-1 text-xs font-semibold text-green-700">
+                            <CheckCircle2 size={13} />
+                            Payment Paid
                           </span>
                         )}
                       </div>
@@ -387,7 +568,7 @@ export default function RepairRequestsPage() {
                         </div>
                       </div>
 
-                      {/* Customer and Price */}
+                      {/* Customer and Base Price */}
                       <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
                         <div>
                           <p className="text-xs text-slate-500">
@@ -420,7 +601,7 @@ export default function RepairRequestsPage() {
                         </div>
                       )}
 
-                      {/* Action Buttons */}
+                      {/* Requested: Accept or Reject */}
                       {isPending && (
                         <div className="mt-5 flex flex-col gap-3 sm:flex-row">
                           <button
@@ -483,37 +664,87 @@ export default function RepairRequestsPage() {
                         </div>
                       )}
 
-                      {/* In Progress: Complete Repair */}
+                      {/* In Progress: Send Final Amount */}
                       {isInProgress && (
                         <div className="mt-5">
+                          <button
+                            type="button"
+                            onClick={() => openCompletionModal(booking)}
+                            disabled={isUpdating}
+                            className="inline-flex items-center justify-center gap-2 rounded-xl bg-green-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            <Banknote size={17} />
+                            Send Final Amount
+                          </button>
+
+                          <p className="mt-2 text-xs text-purple-600">
+                            Enter the final repair amount and send it to the
+                            customer for payment.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Awaiting Payment: Not Paid Yet */}
+                      {isAwaitingPayment && !isPaymentPaid && (
+                        <div className="mt-5 rounded-xl border border-orange-200 bg-orange-50 p-4 text-sm font-medium text-orange-700">
+                          <div className="flex items-center gap-2">
+                            <Clock3 size={19} />
+                            Waiting for customer payment.
+                          </div>
+
+                          <p className="mt-2 pl-7">
+                            Final Amount: {formatPrice(booking.finalAmount)}
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Payment Received: Confirm Completion */}
+                      {isAwaitingPayment && isPaymentPaid && (
+                        <div className="mt-5 rounded-xl border border-green-200 bg-green-50 p-4">
+                          <div className="flex items-center gap-2 text-sm font-semibold text-green-700">
+                            <CheckCircle2 size={19} />
+                            Customer payment received!
+                          </div>
+
+                          <p className="mt-2 text-sm text-green-700">
+                            Final Amount: {formatPrice(booking.finalAmount)}
+                          </p>
+
                           <button
                             type="button"
                             onClick={() =>
                               handleStatusUpdate(booking._id, "completed")
                             }
                             disabled={isUpdating}
-                            className="inline-flex items-center justify-center gap-2 rounded-xl bg-green-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
+                            className="mt-4 inline-flex items-center justify-center gap-2 rounded-xl bg-green-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             {isUpdating ? (
                               <Loader2 size={17} className="animate-spin" />
                             ) : (
                               <CheckCircle2 size={17} />
                             )}
-                            Mark as Completed
+                            Confirm Completion
                           </button>
-
-                          <p className="mt-2 text-xs text-purple-600">
-                            Repair is in progress. Mark it completed after
-                            finishing the work.
-                          </p>
                         </div>
                       )}
 
                       {/* Completed */}
                       {isCompleted && (
-                        <div className="mt-5 flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 p-4 text-sm font-semibold text-green-700">
-                          <CheckCircle2 size={19} />
-                          This repair has been completed successfully.
+                        <div className="mt-5 rounded-xl border border-green-200 bg-green-50 p-4 text-sm font-semibold text-green-700">
+                          <div className="flex items-center gap-2">
+                            <CheckCircle2 size={19} />
+                            This repair has been completed successfully.
+                          </div>
+
+                          {booking.finalAmount !== undefined && (
+                            <p className="mt-2 pl-7">
+                              Final Amount: {formatPrice(booking.finalAmount)}
+                            </p>
+                          )}
+
+                          <p className="mt-2 pl-7 text-xs font-medium">
+                            Payment Status: {isPaymentPaid ? "Paid" : "Not paid"}
+                          </p>
                         </div>
                       )}
 
@@ -539,6 +770,145 @@ export default function RepairRequestsPage() {
           </div>
         )}
       </div>
+
+      {/* Final Amount Modal */}
+      {selectedBooking && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 px-4 py-6 backdrop-blur-sm"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              closeCompletionModal();
+            }
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="completion-modal-title"
+            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl"
+          >
+            <div className="mb-5 flex items-start justify-between">
+              <div className="flex items-center gap-3">
+                <div className="rounded-xl bg-green-50 p-3 text-green-600">
+                  <Banknote size={24} />
+                </div>
+
+                <div>
+                  <h2
+                    id="completion-modal-title"
+                    className="text-xl font-bold text-slate-900"
+                  >
+                    Complete Repair
+                  </h2>
+
+                  <p className="mt-1 text-sm text-slate-500">
+                    Enter the final repair amount.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={closeCompletionModal}
+                disabled={updatingId !== null}
+                aria-label="Close modal"
+                className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="mb-5 rounded-xl bg-slate-50 p-4">
+              <p className="text-xs font-medium text-slate-500">
+                Service
+              </p>
+
+              <p className="mt-1 font-semibold text-slate-800">
+                {selectedBooking.serviceTitle || "Repair Service"}
+              </p>
+
+              <div className="mt-3 flex items-center justify-between border-t border-slate-200 pt-3">
+                <span className="text-sm text-slate-500">
+                  Base Price
+                </span>
+
+                <span className="font-bold text-slate-800">
+                  {formatPrice(selectedBooking.basePrice)}
+                </span>
+              </div>
+            </div>
+
+            <label
+              htmlFor="finalAmount"
+              className="mb-2 block text-sm font-semibold text-slate-700"
+            >
+              Final Amount (৳)
+            </label>
+
+            <div className="relative">
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 font-semibold text-slate-500">
+                ৳
+              </span>
+
+              <input
+                id="finalAmount"
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={finalAmount}
+                onChange={(event) => {
+                  setFinalAmount(event.target.value);
+                  setAmountError("");
+                }}
+                placeholder="Enter final amount"
+                disabled={updatingId !== null}
+                className="w-full rounded-xl border border-slate-300 py-3 pl-10 pr-4 text-lg font-semibold text-slate-900 outline-none transition placeholder:text-sm placeholder:font-normal focus:border-green-500 focus:ring-2 focus:ring-green-100 disabled:bg-slate-100"
+              />
+            </div>
+
+            {amountError && (
+              <p className="mt-2 flex items-center gap-2 text-sm text-red-600">
+                <AlertCircle size={16} />
+                {amountError}
+              </p>
+            )}
+
+            <p className="mt-2 text-xs leading-5 text-slate-500">
+              Enter the total amount charged for completing this repair.
+            </p>
+
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={closeCompletionModal}
+                disabled={updatingId !== null}
+                className="rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={confirmCompletion}
+                disabled={updatingId !== null}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-green-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {updatingId !== null ? (
+                  <>
+                    <Loader2 size={17} className="animate-spin" />
+                    Sending Amount...
+                  </>
+                ) : (
+                  <>
+                    <Banknote size={17} />
+                    Send Final Amount
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
